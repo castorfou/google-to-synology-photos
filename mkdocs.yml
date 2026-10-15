@@ -1,6 +1,7 @@
 site_name: Google to Synology photos
 site_description: A prhost turn google photos archive in synology photos
 site_url: https://castorfou.github.io/google-to-synology-photos
+repo_url: https://github.com/castorfou/google-to-synology-photos
 use_directory_urls: true
 
 # Exclude internal directories from documentation
