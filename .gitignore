@@ -6,6 +6,9 @@ __pycache__/
 # C extensions
 *.so
 
+# matt pocock way of doing
+.claude/worktrees/
+
 # Distribution / packaging
 .Python
 build/
