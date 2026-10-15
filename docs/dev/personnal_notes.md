@@ -49,3 +49,9 @@ The four research reports are on their own research/... branches, not on main. T
 !!! info "next step"
 
     When your export is in data/raw/, start a new session with /mattpocock-skills:wayfinder #1.
+
+Interesting, /matt is working by creating branches with results for each issues, and they don't mean to be merged (throwaway on purpose)
+
+> Wayfinder treats these branches as throwaway on purpose. Each one holds one research report, a source for a decision. The report is not part of the product. Each closed ticket and the map link to the report on its branch, so the branches must stay, or those links break.
+> They should not go into main as they are. These reports are notes from a moment in time ("latest release 2026-09", "uncertain"…). The project rules in CLAUDE.md say the documentation in docs/ must describe the current system, without that kind of history. Also, mkdocs build --strict could complain about pages that are not in the menu.
+> What is useful will reach main later, in the right form. When we write the spec with /to-spec, and then the docs, the useful facts get rewritten in docs/user/ and docs/dev/, for example "Synology Photos reads the Caption from EXIF ImageDescription". Each fact will carry a link to the research report as its source.
