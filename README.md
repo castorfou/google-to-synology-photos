@@ -1,6 +1,6 @@
 # Google to Synology photos
 
-A prhost turn google photos archive in synology photos
+A project to host google photos archive in synology photos
 
 ## pyfoundry-template
 
