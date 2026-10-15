@@ -1,0 +1,13 @@
+{
+  "name": "google-to-synology-photos",
+  "version": "1.0.0",
+  "description": "A prhost turn google photos archive in synology photos",
+  "scripts": {
+    "dev": "echo 'Add your development scripts here'",
+    "build": "echo 'Add your build scripts here'"
+  },
+  "keywords": ["data-science", "python", "node"],
+  "author": "castorfou",
+  "license": "MIT",
+  "devDependencies": {}
+}

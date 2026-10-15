@@ -1,0 +1,24 @@
+{
+  "template": "https://github.com/castorfou/PyFoundry.git",
+  "commit": "4b76852d2b52dde57597cca3805292b45626e1f3",
+  "checkout": null,
+  "context": {
+    "cookiecutter": {
+      "project_name": "Google to Synology photos",
+      "project_slug": "google-to-synology-photos",
+      "description": "A prhost turn google photos archive in synology photos",
+      "python_version": "3.12",
+      "github_username": "castorfou",
+      "use_node": "y",
+      "docker_in_docker": "y",
+      "_copy_without_render": [
+        ".devcontainer/resources/.p10k.zsh",
+        ".devcontainer/scripts/check_mounts.sh"
+      ],
+      "_pyfoundry_version": "1.0.0",
+      "_template": "https://github.com/castorfou/PyFoundry.git",
+      "_commit": "4b76852d2b52dde57597cca3805292b45626e1f3"
+    }
+  },
+  "directory": null
+}
