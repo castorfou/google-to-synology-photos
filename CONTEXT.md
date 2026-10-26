@@ -60,3 +60,7 @@ _Avoid_: caption, remark
 **Like**:
 A heart that a person puts on a photo in a shared Album.
 _Avoid_: favourite (a favourite is the owner's star, not a Like)
+
+**Photo Description**:
+The text shown with a photo in the NAS Library: its Caption, followed by its Comments and Likes written out as text (author, date). The oldest photo of an Album also carries the Album's own description, Comments and Likes.
+_Avoid_: caption, comment
