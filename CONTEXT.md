@@ -46,7 +46,7 @@ _Avoid_: household, guests
 A named group of photos and videos created in Google Photos (or earlier in Picasa Web), possibly shared with Family. Its photos may come from any Contributor.
 
 **Contributor**:
-Any person who added a photo to an Album, including Family members adding their own photos to a shared Album.
+Any Google account that added a photo to an Album: the Household Account itself, the personal account of a Household member, or a Family member's account. Only photos in the Household Account's library are in a Takeout Export.
 _Avoid_: uploader, owner
 
 **Caption**:
