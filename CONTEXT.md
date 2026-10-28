@@ -19,8 +19,12 @@ The single Google account shared by the Household, which owns the Albums and fro
 _Avoid_: my account, the Google account
 
 **Takeout Export**:
-One download of the Household Account's Google Photos content produced by Google Takeout; the only input to the NAS Library.
+One download of the Household Account's Google Photos content produced by Google Takeout; the main input to the NAS Library.
 _Avoid_: dump, backup, archive
+
+**Album Download**:
+The files of one shared Album downloaded from Google Photos ("Download all"), used only to add the photos other Contributors put in that Album, which are missing from the Takeout Export. Optional, and added whenever the user wants.
+_Avoid_: album export, album takeout
 
 **Refresh**:
 Bringing the NAS Library up to date from a newer Takeout Export. Imported content follows Google Photos and may overwrite changes made on the NAS. No photo or Album that once existed is removed, but text (Captions, Comments, Likes) follows the latest Takeout Export: a Comment deleted in Google Photos disappears from the NAS Library.
