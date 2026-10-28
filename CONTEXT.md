@@ -18,6 +18,10 @@ _Avoid_: backup, archive, mirror
 The single Google account shared by the Household, which owns the Albums and from which every Takeout Export is made.
 _Avoid_: my account, the Google account
 
+**NAS Account**:
+The single account on the NAS shared by the Household, whose Synology Photos holds the NAS Library; the Household browses with it and the tool writes with it.
+_Avoid_: NAS user, admin, Household Account (that one is the Google account)
+
 **Takeout Export**:
 One download of the Household Account's Google Photos content produced by Google Takeout; the main input to the NAS Library.
 _Avoid_: dump, backup, archive
