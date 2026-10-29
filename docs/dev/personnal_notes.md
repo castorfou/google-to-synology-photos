@@ -55,3 +55,37 @@ Interesting, /matt is working by creating branches with results for each issues,
 > Wayfinder treats these branches as throwaway on purpose. Each one holds one research report, a source for a decision. The report is not part of the product. Each closed ticket and the map link to the report on its branch, so the branches must stay, or those links break.
 > They should not go into main as they are. These reports are notes from a moment in time ("latest release 2026-09", "uncertain"…). The project rules in CLAUDE.md say the documentation in docs/ must describe the current system, without that kind of history. Also, mkdocs build --strict could complain about pages that are not in the menu.
 > What is useful will reach main later, in the right form. When we write the spec with /to-spec, and then the docs, the useful facts get rewritten in docs/user/ and docs/dev/, for example "Synology Photos reads the Caption from EXIF ImageDescription". Each fact will carry a link to the research report as its source.
+
+
+# Oct, 29 26
+
+the wayfinder is now completed
+
+the map is closed : https://github.com/castorfou/google-to-synology-photos/issues/1
+
+I have just invoqued /to-spec
+
+Result is in https://github.com/castorfou/google-to-synology-photos/issues/28
+
+Next steps
+
+> D'après `ask-matt`, tu sors de la map par le bon côté : wayfinder, puis `/to-spec`, puis `/to-tickets`, puis l'implémentation.
+>
+> **1. Maintenant, dans cette même session : `/mattpocock-skills:to-tickets #28`**
+>
+> Ce skill découpe la spec en tickets **« tracer bullet »**. Chacun traverse toutes les couches de bout en bout, est vérifiable seul, tient dans une session, et déclare les tickets qui le bloquent, sous forme de vrais liens de blocage GitHub.
+>
+> Lance-le **avant de vider le contexte** : la spec et toutes les décisions sont encore chargées ici. Il ne peut pas se lancer seul, c'est à toi de taper la commande.
+>
+> **2. Ensuite, pour chaque ticket, choisis une des deux façons :**
+> - **`/clear`, puis `/mattpocock-skills:implement #<ticket>`**, en commençant par les tickets qui n'ont pas de bloqueur. Chaque ticket repart d'un contexte vide. Il passe par `/tdd` sur la seam qu'on a validée (l'import complet contre le faux Synology Photos), puis par `/code-review`.
+  > - Attention : `implement` commite sur la branche courante, sans push ni PR. Crée d'abord une branche par ticket, et ouvre la PR à la fin, car tu ne fusionnes que par PR.
+  > - Sinon, la commande du projet **`/fix-issue <n>`** fait tout l'enchaînement d'un coup : branche, TDD, contrôles qualité, doc et PR.
+> - **`/mattpocock-skills:implement-spec #28`** : il orchestre toute la spec en une fois. Il lance des sous-agents en parallèle sur les tickets prêts, met tout sur une seule branche d'intégration, puis fait une seule revue de code. Il convient si tu préfères superviser plutôt que piloter ticket par ticket. C'est plus rapide, mais tu as moins la main sur chaque étape.
+>
+> Je te recommande **ticket par ticket avec `/fix-issue`**, au moins pour les 2 ou 3 premiers. Ce sont eux qui posent la structure (CLI, faux NAS, lecture du Takeout) sur laquelle tout le reste s'appuie, et ça vaut le coup de les relire de près.
+>
+> **3. À la fin du build : `/mattpocock-skills:retro`**, dans la même session, avant de vider le contexte. Il propose des améliorations de l'environnement de travail (contrôles automatiques, standards de code), pas du code lui-même.
+
+
+Pour démarrer : /clear, puis /fix-issue 29 pour le tracer bullet. Une fois qu'il est fusionné, les tickets 30 à 33 peuvent se faire en parallèle.

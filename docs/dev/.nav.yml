@@ -1,4 +1,5 @@
 nav:
   - Contenu: README.md
+  - Architecture: architecture.md
   - Héritage PyFoundry: pyfoundry.md
   - Avancement: personnal_notes.md
