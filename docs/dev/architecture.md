@@ -70,7 +70,8 @@ The real client, its API calls and the behaviour measured on the DS923 are descr
 - The NAS address, the user name and a certificate the user trusted go to `settings.json` in the user config folder (`platformdirs.user_config_path("g2s")`).
 - The password and the device token go to the OS keyring (service `g2s`). Nothing secret is written to a file.
 - DSM always needs the password. The device token only spares the 2FA code, so later runs need the password from the keyring.
-- A wrong password is removed from the keyring, so the next run asks for it again.
+- A kept password that the NAS refuses is removed from the keyring, so the next run asks for it again. A failed `g2s login` leaves what was kept untouched.
+- An unreachable NAS, or a certificate that no longer matches the pinned one, stops `g2s` with a message instead of a traceback.
 - When the system does not trust the NAS certificate (a self-signed DSM certificate on a LAN address), the first run shows its SHA-256 fingerprint and asks the user to trust it. A trusted certificate is pinned: later runs accept that certificate only, and do not check the host name.
 
 ## Tests

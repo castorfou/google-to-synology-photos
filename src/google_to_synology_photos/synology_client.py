@@ -16,7 +16,7 @@ from google_to_synology_photos.synology import NasAlbum, SynologyError
 PHOTOS_ROOT = "Photos"
 FOLDER_EXISTS = 641
 FOLDER_MISSING = 642
-PAGE = 1000
+PAGE_SIZE = 1000
 ALBUM_BATCH = 100
 METADATA_JOBS = ("basic", "metadata", "metadata_updating")
 RETRY_DELAYS = (0.0, 1.0, 2.0, 4.0, 8.0)
@@ -25,7 +25,7 @@ RETRY_DELAYS = (0.0, 1.0, 2.0, 4.0, 8.0)
 class SynologyPhotosClient:
     """The SynologyPhotos interface, on a logged-in DsmApi."""
 
-    def __init__(self, api: DsmApi, index_timeout: float = 120.0) -> None:
+    def __init__(self, api: DsmApi, index_timeout: float = 600.0) -> None:
         self._api = api
         self._folder_ids: dict[str, int] = {}
         # Folder -> {file name: item id}, as last listed or changed by this client.
@@ -35,24 +35,22 @@ class SynologyPhotosClient:
     # Items
 
     def upload(self, path: str, data: bytes) -> int:
+        """Upload a file at path, keeping any file already there; return its id."""
         # duplicate="ignore" skips only identical files: a different file under
         # a taken name is stored as a renamed copy. So a taken path is checked
-        # here first.
+        # here first, on the folder listing this client keeps.
         folder, name = _split(path)
         listing = self._listings.get(folder)
         if listing is None:
-            self.item_at(path)
-            listing = self._listings.get(folder, {})
+            listing = self._list_folder(folder)
         if name in listing:
             return listing[name]
-        folder_id = self._folder_id(folder, create=True)
-        assert folder_id is not None
         result = self._api.upload(
+            "SYNO.Foto.Upload.Item",
+            "upload_to_folder",
+            1,
             {
-                "api": "SYNO.Foto.Upload.Item",
-                "method": "upload_to_folder",
-                "version": "1",
-                "target_folder_id": json.dumps(folder_id),
+                "target_folder_id": json.dumps(self._make_folder(folder)),
                 "name": json.dumps(name, ensure_ascii=False),
                 "duplicate": json.dumps("ignore"),
                 "mtime": str(int(time.time())),
@@ -61,20 +59,28 @@ class SynologyPhotosClient:
             data,
         )
         item_id = int(result["id"])
+        if result.get("action") == "rename":
+            # The path was taken after the listing: drop the copy, keep the item.
+            self._api.call("SYNO.Foto.Browse.Item", "delete", 1, id=[item_id])
+            existing = self._list_folder(folder).get(name)
+            if existing is None:
+                raise SynologyError(0, f"upload of {path}")
+            return existing
         self._listings.setdefault(folder, {})[name] = item_id
         return item_id
 
     def overwrite(self, path: str, data: bytes) -> int:
+        """Replace the file at path, or upload it; return its id."""
         # Upload.Item has no overwrite; File Station has, and keeps the item id.
         item_id = self.item_at(path)
         if item_id is None:
             return self.upload(path, data)
         folder, name = _split(path)
         self._api.upload(
+            "SYNO.FileStation.Upload",
+            "upload",
+            2,
             {
-                "api": "SYNO.FileStation.Upload",
-                "method": "upload",
-                "version": "2",
                 "path": f"/home/{PHOTOS_ROOT}{folder}",
                 "create_parents": "true",
                 "overwrite": "true",
@@ -86,21 +92,23 @@ class SynologyPhotosClient:
         return item_id
 
     def item_at(self, path: str) -> int | None:
+        """Return the id of the item at path, or None."""
         folder, name = _split(path)
-        folder_id = self._folder_id(folder, create=False)
-        if folder_id is None:
-            return None
-        items = self._pages("SYNO.Foto.Browse.Item", 2, folder_id=folder_id)
-        self._listings[folder] = {i["filename"]: int(i["id"]) for i in items}
-        return self._listings[folder].get(name)
+        return self._list_folder(folder).get(name)
 
     def delete_item(self, item_id: int) -> None:
+        """Delete an item and its file."""
         self._api.call("SYNO.Foto.Browse.Item", "delete", 1, id=[item_id])
         for listing in self._listings.values():
             for name in [n for n, i in listing.items() if i == item_id]:
                 del listing[name]
 
     def set_description(self, item_id: int, text: str) -> None:
+        """Set the item's Photo Description, and write it again until it sticks.
+
+        A description that still has not stuck after the last try is left to
+        the caller's read-back.
+        """
         # A write made just after the upload is sometimes dropped while still
         # answering success; written again a little later, it sticks.
         for delay in RETRY_DELAYS:
@@ -112,21 +120,25 @@ class SynologyPhotosClient:
                 return
 
     def description(self, item_id: int) -> str | None:
+        """Return the item's Photo Description, or None for an unknown item."""
         item = self._item(item_id, ["description"])
         return None if item is None else str(item["additional"]["description"])
 
     # Albums
 
     def create_album(self, name: str) -> int:
+        """Create an empty Album named name; return its id."""
         data = self._api.call(
             "SYNO.Foto.Browse.NormalAlbum", "create", 1, name=name, item=[]
         )
         return int(data["album"]["id"])
 
     def rename_album(self, album_id: int, name: str) -> None:
+        """Rename an Album."""
         self._api.call("SYNO.Foto.Browse.Album", "set_name", 1, id=album_id, name=name)
 
     def add_to_album(self, album_id: int, item_ids: list[int]) -> None:
+        """Add items to an Album, in batches; unknown items are skipped."""
         for start in range(0, len(item_ids), ALBUM_BATCH):
             batch = item_ids[start : start + ALBUM_BATCH]
             self._api.call(
@@ -134,47 +146,63 @@ class SynologyPhotosClient:
             )
 
     def albums(self) -> list[NasAlbum]:
+        """Return every Album."""
         return [
             NasAlbum(int(a["id"]), a["name"])
             for a in self._pages("SYNO.Foto.Browse.Album", 2)
         ]
 
     def album_items(self, album_id: int) -> list[int]:
+        """Return the ids of the items in an Album."""
         items = self._pages("SYNO.Foto.Browse.Item", 2, album_id=album_id)
         return [int(i["id"]) for i in items]
 
     # Helpers
 
-    def _folder_id(self, folder: str, create: bool) -> int | None:
-        """Return the id of the Synology Photos folder, creating it if asked."""
-        if folder in self._folder_ids:
-            return self._folder_ids[folder]
-        try:
-            data = self._api.call("SYNO.Foto.Browse.Folder", "get", 2, name=folder)
-        except SynologyError as error:
-            if error.code != FOLDER_MISSING or not create:
+    def _list_folder(self, folder: str) -> dict[str, int]:
+        """List a folder as {file name: item id}, and keep that listing."""
+        folder_id = self._find_folder(folder)
+        items = (
+            []
+            if folder_id is None
+            else self._pages("SYNO.Foto.Browse.Item", 2, folder_id=folder_id)
+        )
+        self._listings[folder] = {i["filename"]: int(i["id"]) for i in items}
+        return self._listings[folder]
+
+    def _find_folder(self, folder: str) -> int | None:
+        """Return the id of a Synology Photos folder, or None if it is missing."""
+        if folder not in self._folder_ids:
+            try:
+                data = self._api.call("SYNO.Foto.Browse.Folder", "get", 2, name=folder)
+            except SynologyError as error:
                 if error.code == FOLDER_MISSING:
                     return None
                 raise
-            parent, _, name = folder.rpartition("/")
-            parent_id = self._folder_id(parent or "/", create=True)
-            try:
-                data = self._api.call(
-                    "SYNO.Foto.Browse.Folder",
-                    "create",
-                    1,
-                    target_id=parent_id,
-                    name=name,
-                )
-            except SynologyError as race:
-                if race.code != FOLDER_EXISTS:
-                    raise
-                data = self._api.call("SYNO.Foto.Browse.Folder", "get", 2, name=folder)
-        folder_id = int(data["folder"]["id"])
-        self._folder_ids[folder] = folder_id
+            self._folder_ids[folder] = int(data["folder"]["id"])
+        return self._folder_ids[folder]
+
+    def _make_folder(self, folder: str) -> int:
+        """Return the id of a Synology Photos folder, creating it and its parents."""
+        folder_id = self._find_folder(folder)
+        if folder_id is not None:
+            return folder_id
+        parent, _, name = folder.rpartition("/")
+        parent_id = self._make_folder(parent or "/")
+        try:
+            self._api.call(
+                "SYNO.Foto.Browse.Folder", "create", 1, target_id=parent_id, name=name
+            )
+        except SynologyError as error:
+            if error.code != FOLDER_EXISTS:
+                raise
+        folder_id = self._find_folder(folder)
+        if folder_id is None:
+            raise SynologyError(FOLDER_MISSING, f"creation of folder {folder}")
         return folder_id
 
     def _item(self, item_id: int, additional: list[str]) -> dict[str, Any] | None:
+        """Return an item with the additional fields asked, or None if unknown."""
         data = self._api.call(
             "SYNO.Foto.Browse.Item", "get", 2, id=[item_id], additional=additional
         )
@@ -201,14 +229,15 @@ class SynologyPhotosClient:
         raise TimeoutError(f"item {item_id} was not indexed again in time")
 
     def _pages(self, api: str, version: int, **params: Any) -> list[dict[str, Any]]:
+        """Call api.list page after page; return every entry."""
         found: list[dict[str, Any]] = []
         while True:
             data = self._api.call(
-                api, "list", version, offset=len(found), limit=PAGE, **params
+                api, "list", version, offset=len(found), limit=PAGE_SIZE, **params
             )
             page: list[dict[str, Any]] = data.get("list", [])
             found += page
-            if len(page) < PAGE:
+            if len(page) < PAGE_SIZE:
                 return found
 
 

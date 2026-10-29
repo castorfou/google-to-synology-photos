@@ -18,7 +18,7 @@ URL = "https://nas.local:5001"
 ACCOUNT = "household"
 PASSWORD = "s3cret-Passw0rd"  # pragma: allowlist secret
 OTP = "123456"
-CERTIFICATE = "-----BEGIN CERTIFICATE-----\nSYNTHETIC\n-----END CERTIFICATE-----\n"
+CERTIFICATE = "-----BEGIN CERTIFICATE-----\nU1lOVEhFVElD\n-----END CERTIFICATE-----\n"
 
 
 class MemorySecrets:
@@ -201,3 +201,20 @@ def test_login_again_forgets_what_was_kept(config: Path) -> None:
     )
 
     assert again.logged_in
+
+
+def test_a_failed_login_again_keeps_the_login_already_kept(config: Path) -> None:
+    nas, secrets = FakeNas(), MemorySecrets()
+    login(config, secrets, ScriptedUser(URL, ACCOUNT, PASSWORD), nas)
+
+    with pytest.raises(LoginFailedError):
+        login(
+            config,
+            secrets,
+            ScriptedUser(URL, ACCOUNT, "typo"),
+            nas,
+            ask_again=True,
+        )
+    later = login(config, secrets, ScriptedUser(), nas)
+
+    assert later.logged_in

@@ -2,6 +2,8 @@
 
 The tool talks to Synology Photos through the undocumented DSM Web API, at `https://<NAS>:5001/webapi/entry.cgi`, as the NAS Account, in its Personal Space. This page lists the calls it uses and the behaviour measured on a DS923+.
 
+The NAS Account needs the Synology Photos and File Station applications: File Station is the only way to overwrite a file.
+
 ## Paths
 
 A NAS path such as `Photos/Google Photos/2013/IMG_0001__yxk3qp.JPG` is:
@@ -34,15 +36,15 @@ Parameters are sent as a form POST. Values of the `SYNO.Foto.*` calls are JSON-e
 ## Behaviour
 
 - **Upload ids.** `upload_to_folder` returns the item id at once, before indexing ends.
-- **`duplicate`.** Only `ignore` and `rename` are accepted, in every version of `Upload.Item`. `ignore` skips an identical file only: a different file under a taken name is stored as a renamed copy (`x_1.jpg`). The client therefore checks the folder listing itself and never uploads to a taken path.
-- **Overwrite.** `Upload.Item` cannot overwrite. File Station `overwrite=true` replaces the file and keeps the item id. Synology Photos then reads the file again: the new size shows first, then the metadata, and the Photo Description becomes the one in the new file. The client waits until the item has the new size and the index has no `basic`, `metadata` or `metadata_updating` work left.
-- **Photo Description.** Accents, emoji and line breaks are kept exactly. A description written just after the upload is sometimes dropped while the call still answers success; written again a little later, it sticks. The client reads each description back and writes it again after 1, 2, 4 and 8 seconds until it sticks.
+- **`duplicate`.** Only `ignore` and `rename` are accepted, in every version of `Upload.Item`. `ignore` skips an identical file only: a different file under a taken name is stored as a renamed copy (`x_1.jpg`). The client therefore keeps a listing of each folder it uploads to, and never uploads to a taken path. If the path was taken after the listing, the upload answers `action: "rename"`: the client deletes that copy and returns the item already at the path.
+- **Overwrite.** `Upload.Item` cannot overwrite. File Station `overwrite=true` replaces the file and keeps the item id. Synology Photos then reads the file again: the new size shows first, then the metadata, and the Photo Description becomes the one in the new file. The client waits until the item has the new size and the index has no `basic`, `metadata` or `metadata_updating` work left, for up to 10 minutes.
+- **Photo Description.** Accents, emoji and line breaks are kept exactly. A description written just after the upload is sometimes dropped while the call still answers success; written again a little later, it sticks. The client reads each description back and writes it again after 1, 2, 4 and 8 seconds until it sticks. A description that still has not stuck is left to the import's read-back, which lists it in the report.
 - **Unknown items.** `Browse.Item set` and `Browse.Item delete` answer success on an unknown id and do nothing. `NormalAlbum add_item` skips unknown items silently.
 - **Unknown Albums.** `NormalAlbum add_item` and `Album set_name` fail with error 609.
 - **Album names** are not unique: creating an Album with a taken name gives a second Album.
 - **Device token.** The login returns a device token (`did`), even without 2FA. Given back as `device_id`, it spares the 2FA code. A login without the password fails (error 400) even with a device token.
 - **Login errors.** 400: wrong user name or password. 403: a 2FA code is needed (`otp_code`). 404: wrong 2FA code.
-- **Certificate.** DSM serves a self-signed certificate on its LAN address. The client pins it (see [Architecture](architecture.md#login)).
+- **Certificate.** DSM serves a self-signed certificate on its LAN address. The client pins it (see [Architecture](architecture.md#login)). When DSM renews it, the pinned certificate no longer matches: `g2s` stops and asks to run `g2s login`, which shows the new fingerprint.
 
 ## Contract test
 

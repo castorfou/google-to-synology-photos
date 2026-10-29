@@ -16,7 +16,6 @@ import hashlib
 import json
 import socket
 import ssl
-import urllib.parse
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Protocol
@@ -29,6 +28,7 @@ from google_to_synology_photos.dsm import (
     WRONG_PASSWORD,
     DsmApi,
     LoginError,
+    host_and_port,
     pinned_tls,
     server_certificate,
     verified_tls,
@@ -77,6 +77,8 @@ class Gateway[S: Session](Protocol):
 
 @dataclass
 class Settings:
+    """What is kept in settings.json: nothing secret."""
+
     nas_url: str
     account: str
     certificate: str | None = None
@@ -96,14 +98,12 @@ def login[T: Session](
     """Return a logged-in session, asking the user only what is not kept."""
     settings_file = config_dir / SETTINGS_FILE
     settings = None if ask_again else _load(settings_file)
+    stored = None
     if settings is None:
         settings = _ask_settings(user, gateway)
-        secrets.delete(settings.key("password"))
-        secrets.delete(settings.key("device"))
-
-    password = secrets.get(settings.key("password")) or user.ask_secret(
-        f"Password of {settings.account} on the NAS: "
-    )
+    else:
+        stored = secrets.get(settings.key("password"))
+    password = stored or user.ask_secret(f"Password of {settings.account} on the NAS: ")
     device = secrets.get(settings.key("device"))
     session = gateway.open(settings.nas_url, settings.certificate)
     try:
@@ -116,7 +116,10 @@ def login[T: Session](
             device = session.login(settings.account, password, otp=otp)
     except LoginError as error:
         if error.code == WRONG_PASSWORD:
-            secrets.delete(settings.key("password"))
+            # A kept password that no longer works is forgotten; a typed one
+            # leaves what is kept untouched.
+            if stored:
+                secrets.delete(settings.key("password"))
             raise LoginFailedError("Wrong user name or password.") from error
         raise LoginFailedError(
             f"The NAS refused the login (error {error.code})."
@@ -131,12 +134,14 @@ def login[T: Session](
 
 
 def _load(settings_file: Path) -> Settings | None:
+    """Return the kept settings, or None on the first run."""
     if not settings_file.exists():
         return None
     return Settings(**json.loads(settings_file.read_text(encoding="utf-8")))
 
 
 def _ask_settings(user: User, gateway: Gateway[Session]) -> Settings:
+    """Ask for the NAS address and user name, and for trust in its certificate."""
     url = user.ask("NAS address, such as https://192.168.1.20:5001: ").strip()
     if not url.startswith("https://"):
         url = "https://" + url
@@ -155,11 +160,9 @@ def _ask_settings(user: User, gateway: Gateway[Session]) -> Settings:
 
 
 def _fingerprint(certificate_pem: str) -> str:
-    try:
-        der = ssl.PEM_cert_to_DER_cert(certificate_pem)
-    except ValueError:
-        der = certificate_pem.encode()
-    digest = hashlib.sha256(der).hexdigest().upper()
+    """SHA-256 fingerprint of a certificate, as DSM shows it."""
+    digest = hashlib.sha256(ssl.PEM_cert_to_DER_cert(certificate_pem)).hexdigest()
+    digest = digest.upper()
     return ":".join(digest[i : i + 2] for i in range(0, len(digest), 2))
 
 
@@ -167,13 +170,16 @@ class KeyringSecrets:
     """Secrets in the OS keyring."""
 
     def get(self, key: str) -> str | None:
+        """Return the secret kept under key, or None."""
         value: str | None = keyring.get_password(KEYRING_SERVICE, key)
         return value
 
     def set(self, key: str, value: str) -> None:
+        """Keep value under key."""
         keyring.set_password(KEYRING_SERVICE, key, value)
 
     def delete(self, key: str) -> None:
+        """Forget the secret kept under key, if any."""
         with contextlib.suppress(keyring.errors.PasswordDeleteError):
             keyring.delete_password(KEYRING_SERVICE, key)
 
@@ -182,12 +188,15 @@ class TerminalUser:
     """Asks in the terminal; the password is not echoed."""
 
     def ask(self, question: str) -> str:
+        """Ask a question; return the answer."""
         return input(question)
 
     def ask_secret(self, question: str) -> str:
+        """Ask for a secret without showing what is typed."""
         return getpass.getpass(question)
 
     def confirm(self, question: str) -> bool:
+        """Ask a yes/no question."""
         return input(question).strip().lower() in ("y", "yes")
 
 
@@ -195,8 +204,8 @@ class DsmGateway:
     """Reaches the DSM Web API of a real NAS."""
 
     def certificate(self, url: str) -> str | None:
-        parts = urllib.parse.urlsplit(url)
-        host, port = parts.hostname or "", parts.port or 443
+        """Return the NAS certificate to pin, or None if the system trusts it."""
+        host, port = host_and_port(url)
         try:
             with (
                 socket.create_connection((host, port), timeout=15) as raw,
@@ -207,5 +216,6 @@ class DsmGateway:
             return server_certificate(url)
 
     def open(self, url: str, certificate: str | None) -> DsmApi:
+        """Open a session, pinning certificate if given."""
         tls = pinned_tls(certificate) if certificate else verified_tls()
         return DsmApi(url, tls)

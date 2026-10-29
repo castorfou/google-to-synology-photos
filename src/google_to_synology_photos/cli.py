@@ -1,6 +1,8 @@
 """The g2s command line."""
 
 import argparse
+import ssl
+import urllib.error
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -34,12 +36,25 @@ def connect_to_nas(ask_again: bool) -> SynologyPhotos:
         )
     except LoginFailedError as error:
         raise SystemExit(f"g2s: {error}") from error
+    except OSError as error:
+        raise SystemExit(f"g2s: {_network_problem(error)}") from error
     except keyring.errors.KeyringError as error:
         raise SystemExit(
             f"g2s: the OS keyring cannot be used ({error}). "
             "g2s keeps the NAS password there, never in a file."
         ) from error
     return SynologyPhotosClient(session)
+
+
+def _network_problem(error: OSError) -> str:
+    """Explain why the NAS could not be reached."""
+    reason = error.reason if isinstance(error, urllib.error.URLError) else error
+    if isinstance(reason, ssl.SSLCertVerificationError):
+        return (
+            "the NAS certificate is not the one trusted before. If it was "
+            "renewed in DSM, run `g2s login` to check and trust the new one."
+        )
+    return f"cannot reach the NAS ({reason})."
 
 
 def main(

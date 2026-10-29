@@ -52,10 +52,15 @@ def unverified_tls() -> ssl.SSLContext:
     return context
 
 
+def host_and_port(base_url: str) -> tuple[str, int]:
+    """Return the host and port of an https URL."""
+    url = urllib.parse.urlsplit(base_url)
+    return url.hostname or "", url.port or 443
+
+
 def server_certificate(base_url: str) -> str:
     """Return the PEM certificate the server at base_url presents."""
-    url = urllib.parse.urlsplit(base_url)
-    return ssl.get_server_certificate((url.hostname or "", url.port or 443))
+    return ssl.get_server_certificate(host_and_port(base_url), timeout=15)
 
 
 class DsmApi:
@@ -84,7 +89,6 @@ class DsmApi:
         params = {
             "account": account,
             "passwd": password,
-            "session": "webui",
             "format": "cookie",
             "enable_syno_token": "yes",
             "enable_device_token": "yes",
@@ -94,9 +98,7 @@ class DsmApi:
             params["otp_code"] = otp
         if device_id:
             params["device_id"] = device_id
-        response = self._post(
-            {"api": "SYNO.API.Auth", "method": "login", "version": "6", **params}
-        )
+        response = self._auth("login", params)
         if not response.get("success"):
             raise LoginError(response.get("error", {}).get("code", 0))
         data = response["data"]
@@ -105,14 +107,7 @@ class DsmApi:
 
     def logout(self) -> None:
         """End the session."""
-        self._post(
-            {
-                "api": "SYNO.API.Auth",
-                "method": "logout",
-                "version": "6",
-                "session": "webui",
-            }
-        )
+        self._auth("logout", {})
 
     def call(
         self,
@@ -132,9 +127,19 @@ class DsmApi:
         return self._data(self._post(body), f"{api}.{method}")
 
     def upload(
-        self, fields: dict[str, str], filename: str, data: bytes
+        self,
+        api: str,
+        method: str,
+        version: int,
+        fields: dict[str, str],
+        filename: str,
+        data: bytes,
     ) -> dict[str, Any]:
-        """Send a multipart upload with the file last; return the response data."""
+        """Upload a file to api.method; fields are sent as they are, file last.
+
+        Return the response data. Raise SynologyError when the call fails.
+        """
+        fields = {"api": api, "method": method, "version": str(version)} | fields
         boundary = uuid.uuid4().hex
         parts = [
             f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n'
@@ -152,25 +157,36 @@ class DsmApi:
         parts.append(f"--{boundary}--\r\n".encode())
         request = self._request(b"".join(parts))
         request.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
-        call = f"{fields.get('api')}.{fields.get('method')}"
-        return self._data(self._send(request), call)
+        return self._data(self._send(request), f"{api}.{method}")
+
+    def _auth(self, method: str, params: dict[str, str]) -> dict[str, Any]:
+        """Call SYNO.API.Auth for the webui session; return the raw response."""
+        return self._post(
+            {"api": "SYNO.API.Auth", "method": method, "version": "6"}
+            | {"session": "webui"}
+            | params
+        )
 
     def _post(self, body: dict[str, str]) -> dict[str, Any]:
+        """Send a form POST; return the raw response."""
         return self._send(self._request(urllib.parse.urlencode(body).encode()))
 
     def _request(self, body: bytes) -> urllib.request.Request:
+        """Build a request to the Web API, with the session token."""
         request = urllib.request.Request(self._url, data=body)
         if self._token:
             request.add_header("X-SYNO-TOKEN", self._token)
         return request
 
     def _send(self, request: urllib.request.Request) -> dict[str, Any]:
+        """Send a request; return the parsed JSON response."""
         with self._opener.open(request, timeout=600) as response:
             result: dict[str, Any] = json.load(response)
             return result
 
     @staticmethod
     def _data(response: dict[str, Any], call: str) -> dict[str, Any]:
+        """Return the data of a response, or raise SynologyError."""
         if not response.get("success"):
             raise SynologyError(response.get("error", {}).get("code", 0), call)
         data: dict[str, Any] = response.get("data", {})
