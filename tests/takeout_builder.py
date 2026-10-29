@@ -47,8 +47,11 @@ class TakeoutBuilder:
 
     def __init__(self) -> None:
         self.albums: list[SyntheticAlbum] = []
+        # Photos in no Album: they sit only in their year folder.
+        self.loose = SyntheticAlbum("")
 
     def album(self, title: str) -> SyntheticAlbum:
+        """Add an Album folder with its métadonnées.json."""
         album = SyntheticAlbum(title)
         self.albums.append(album)
         return album
@@ -61,9 +64,14 @@ class TakeoutBuilder:
         taken: datetime = datetime(2013, 4, 13, 15, 0, 44, tzinfo=UTC),
         caption: str = "",
     ) -> SyntheticPhoto:
+        """Add a photo to an Album; it also sits in its year folder."""
         photo = SyntheticPhoto(name, url, taken, caption, data=_jpeg_bytes(url))
         album.photos.append(photo)
         return photo
+
+    def loose_photo(self, name: str, url: str) -> SyntheticPhoto:
+        """Add a photo that belongs to no Album."""
+        return self.photo(self.loose, name, url)
 
     def write(self, export_dir: Path) -> Path:
         """Write the export as one ZIP in export_dir; return export_dir."""
@@ -78,14 +86,23 @@ class TakeoutBuilder:
                 )
                 for photo in album.photos:
                     # An Album photo also sits in its year folder.
-                    year = f"{ROOT}/Photos de\xa0{photo.taken.year}"
-                    for where in (folder, year):
-                        zf.writestr(f"{where}/{photo.name}", photo.data)
-                        zf.writestr(
-                            f"{where}/{photo.name}{SIDECAR_SUFFIX}",
-                            json.dumps(photo.sidecar(), ensure_ascii=False),
-                        )
+                    _write_photo(zf, folder, photo)
+                    _write_photo(zf, _year_folder(photo), photo)
+            for photo in self.loose.photos:
+                _write_photo(zf, _year_folder(photo), photo)
         return export_dir
+
+
+def _year_folder(photo: SyntheticPhoto) -> str:
+    return f"{ROOT}/Photos de\xa0{photo.taken.year}"
+
+
+def _write_photo(zf: zipfile.ZipFile, folder: str, photo: SyntheticPhoto) -> None:
+    zf.writestr(f"{folder}/{photo.name}", photo.data)
+    zf.writestr(
+        f"{folder}/{photo.name}{SIDECAR_SUFFIX}",
+        json.dumps(photo.sidecar(), ensure_ascii=False),
+    )
 
 
 def _jpeg_bytes(seed: str) -> bytes:

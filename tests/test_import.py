@@ -34,7 +34,7 @@ def test_album_exists_with_its_google_title_and_holds_the_photo(export: Path) ->
 
     run_import(export, nas)
 
-    assert nas.album_contents() == {"Vacances d'été 2013": [PHOTO_PATH]}
+    assert nas.album_contents() == [("Vacances d'été 2013", [PHOTO_PATH])]
 
 
 def test_photo_description_is_the_caption(export: Path) -> None:
@@ -65,3 +65,17 @@ def test_a_clean_run_reports_what_it_did_and_no_failed_write(export: Path) -> No
     assert "Photos and videos uploaded: 1" in text
     assert "Albums created: 1" in text
     assert "Photo Descriptions written: 1" in text
+
+
+def test_a_photo_in_no_album_is_not_imported(tmp_path: Path) -> None:
+    takeout = TakeoutBuilder()
+    album = takeout.album("Noël")
+    takeout.photo(album, "IMG_0001.JPG", URL)
+    takeout.loose_photo(
+        "IMG_0003.JPG", "https://photos.google.com/photo/AF1QipSyntheticPhotoUrl0003"
+    )
+    nas = FakeSynologyPhotos()
+
+    run_import(takeout.write(tmp_path / "export"), nas)
+
+    assert nas.paths() == [PHOTO_PATH]

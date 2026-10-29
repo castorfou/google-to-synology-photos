@@ -17,11 +17,13 @@ UNSAFE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 
 
 def short_hash(url: str) -> str:
+    """Return the 6 path characters derived from a photo's url."""
     digest = hashlib.sha256(url.encode()).digest()
     return base64.b32encode(digest).decode().lower()[:6]
 
 
 def nas_path(photo: Photo) -> str:
+    """Return the NAS path of photo."""
     stem, dot, ext = photo.name.rpartition(".")
     if not dot:
         stem, ext = photo.name, ""

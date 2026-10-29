@@ -21,6 +21,7 @@ All code lives in `src/google_to_synology_photos/`.
 - Album folders are the folders holding a `métadonnées.json` (or `metadata.json`); its `title` is the Album title.
 - Each media file has a sidecar `<file name>.supplemental-metadata.json`. A sidecar whose media file is absent is skipped.
 - A photo is identified by its sidecar `url`. The same photo appears in its Album folders and in its year folder (`Photos de 2013`); it is read once.
+- Only photos that belong to at least one Album are imported.
 - The date taken is the sidecar `photoTakenTime.timestamp`, in UTC. The Caption is the sidecar `description`.
 - Google writes a non-breaking space in `Google Photos` and in `Photos de <year>`.
 
@@ -52,11 +53,11 @@ The rule is deterministic: the same photo gets the same path in every export.
 
 - `upload(path, data) -> id`, `item_at(path) -> id | None`;
 - `set_description(id, text)`, `description(id)`;
-- `create_album(name) -> id`, `add_to_album(album_id, item_ids)`, `albums()`, `album_items(album_id)`.
+- `create_album(name) -> id`, `add_to_album(album_id, item_ids)`, `album_items(album_id)`.
 
 Album names are not unique, so Albums are only found by id. Writes answer success even when nothing changed, so the import reads every write back.
 
-The CLI has no real client yet: `g2s import` stops with a message before touching the NAS.
+`g2s import` has no NAS client and stops with a message before touching the NAS.
 
 ## Tests
 

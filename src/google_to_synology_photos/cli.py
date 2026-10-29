@@ -12,6 +12,7 @@ REPORT_NAME = "report.md"
 
 
 def connect_to_nas() -> SynologyPhotos:
+    """Log in to the NAS; there is no real client, so stop with a message."""
     raise SystemExit("g2s: logging in to the NAS is not available yet.")
 
 
@@ -19,6 +20,7 @@ def main(
     argv: Sequence[str] | None = None,
     connect: Callable[[], SynologyPhotos] = connect_to_nas,
 ) -> int:
+    """Run g2s with argv; connect gives the Synology Photos client."""
     parser = argparse.ArgumentParser(
         prog="g2s",
         description="Turn a Google Photos Takeout Export into a NAS Library "

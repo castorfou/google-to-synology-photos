@@ -1,18 +1,11 @@
-"""Interface of the Synology Photos client, as the NAS Account in its Personal Space.
+"""Interface of the Synology Photos client, writing as the NAS Account.
 
 Paths are NAS paths such as ``Photos/Google Photos/2013/IMG_0001__yxk3qp.JPG``.
 Writes answer success even when nothing changed, so callers read every write back.
 Album names are not unique: Albums are only ever found by id.
 """
 
-from dataclasses import dataclass
 from typing import Protocol
-
-
-@dataclass(frozen=True)
-class NasAlbum:
-    id: int
-    name: str
 
 
 class SynologyPhotos(Protocol):
@@ -24,16 +17,22 @@ class SynologyPhotos(Protocol):
         """Return the id of the item at path, or None."""
         ...
 
-    def set_description(self, item_id: int, text: str) -> None: ...
+    def set_description(self, item_id: int, text: str) -> None:
+        """Set the item's Photo Description."""
+        ...
 
     def description(self, item_id: int) -> str | None:
         """Return the item's Photo Description, or None for an unknown item."""
         ...
 
-    def create_album(self, name: str) -> int: ...
+    def create_album(self, name: str) -> int:
+        """Create an empty Album named name; return its id."""
+        ...
 
-    def add_to_album(self, album_id: int, item_ids: list[int]) -> None: ...
+    def add_to_album(self, album_id: int, item_ids: list[int]) -> None:
+        """Add items to an Album."""
+        ...
 
-    def albums(self) -> list[NasAlbum]: ...
-
-    def album_items(self, album_id: int) -> list[int]: ...
+    def album_items(self, album_id: int) -> list[int]:
+        """Return the ids of the items in an Album."""
+        ...

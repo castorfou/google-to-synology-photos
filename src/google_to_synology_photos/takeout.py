@@ -23,24 +23,32 @@ class Photo:
     member: str
 
     def read(self) -> bytes:
+        """Return the bytes of the media file, read from its ZIP."""
         with zipfile.ZipFile(self.zip_path) as zf:
             return zf.read(self.member)
 
 
 @dataclass
 class Album:
+    """An Album of the export: its Google title and the urls of its photos."""
+
     title: str
     urls: list[str] = field(default_factory=list)
 
 
 @dataclass
 class Export:
+    """The Albums of a Takeout Export, and the photos that belong to them."""
+
     photos: dict[str, Photo]
     albums: list[Album]
 
 
 def read_export(export_dir: Path) -> Export:
-    """Read every ZIP of export_dir into the photos (by url) and the Albums."""
+    """Read every ZIP of export_dir into the Albums and their photos (by url).
+
+    Photos that belong to no Album are left out.
+    """
     photos: dict[str, Photo] = {}
     album_folders: dict[str, str] = {}
     urls_by_folder: dict[str, list[str]] = {}
@@ -77,4 +85,5 @@ def read_export(export_dir: Path) -> Export:
         Album(title, urls_by_folder.get(folder, []))
         for folder, title in album_folders.items()
     ]
-    return Export(photos, albums)
+    in_albums = {url for album in albums for url in album.urls}
+    return Export({u: p for u, p in photos.items() if u in in_albums}, albums)

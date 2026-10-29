@@ -8,12 +8,15 @@ from dataclasses import dataclass, field
 
 @dataclass
 class Report:
+    """What a run did, and the writes that did not stick."""
+
     uploaded: int = 0
     albums_created: int = 0
     descriptions_written: int = 0
     failed_writes: list[str] = field(default_factory=list)
 
     def render(self) -> str:
+        """Return the report as Markdown."""
         lines = [
             "# Import report",
             "",

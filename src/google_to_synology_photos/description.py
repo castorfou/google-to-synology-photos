@@ -4,4 +4,5 @@ from google_to_synology_photos.takeout import Photo
 
 
 def photo_description(photo: Photo) -> str:
+    """Return the Photo Description of photo: its Caption."""
     return photo.caption

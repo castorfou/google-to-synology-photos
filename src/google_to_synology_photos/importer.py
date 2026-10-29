@@ -14,6 +14,11 @@ from google_to_synology_photos.takeout import read_export
 
 
 def run_import(export_dir: Path, nas: SynologyPhotos) -> Report:
+    """Build the NAS Library from the Takeout Export in export_dir.
+
+    Uploads the photos, creates the Albums, sets the Photo Descriptions, and
+    returns the report of the run.
+    """
     report = Report()
     export = read_export(export_dir)
 
@@ -36,15 +41,14 @@ def run_import(export_dir: Path, nas: SynologyPhotos) -> Report:
             report.failed_writes.append(f"Photos of Album {album.title!r}")
 
     for url, item_id in item_ids.items():
-        text = photo_description(export.photos[url])
+        photo = export.photos[url]
+        text = photo_description(photo)
         if not text:
             continue
         nas.set_description(item_id, text)
         if nas.description(item_id) == text:
             report.descriptions_written += 1
         else:
-            report.failed_writes.append(
-                f"Photo Description of {nas_path(export.photos[url])}"
-            )
+            report.failed_writes.append(f"Photo Description of {nas_path(photo)}")
 
     return report

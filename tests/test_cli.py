@@ -26,7 +26,7 @@ def test_g2s_import_builds_the_library_and_writes_the_report_next_to_the_export(
     exit_code = main(["import", str(export)], connect=lambda: nas)
 
     assert exit_code == 0
-    assert list(nas.album_contents()) == ["Anniversaire"]
+    assert [name for name, _ in nas.album_contents()] == ["Anniversaire"]
     printed = capsys.readouterr().out
     assert "Photos and videos uploaded: 1" in printed
     report_file = tmp_path / "takeout" / "report.md"

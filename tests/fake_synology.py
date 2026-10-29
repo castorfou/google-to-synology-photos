@@ -8,8 +8,6 @@
 
 from dataclasses import dataclass
 
-from google_to_synology_photos.synology import NasAlbum
-
 
 @dataclass
 class FakeItem:
@@ -22,7 +20,7 @@ class FakeItem:
 class FakeSynologyPhotos:
     def __init__(self) -> None:
         self._items: dict[int, FakeItem] = {}
-        self._albums: dict[int, NasAlbum] = {}
+        self._album_names: dict[int, str] = {}
         self._album_items: dict[int, list[int]] = {}
         self._next_id = 1
         # Set to False to make description writes silently not stick.
@@ -54,19 +52,16 @@ class FakeSynologyPhotos:
         return item.description if item else None
 
     def create_album(self, name: str) -> int:
-        album = NasAlbum(self._new_id(), name)
-        self._albums[album.id] = album
-        self._album_items[album.id] = []
-        return album.id
+        album_id = self._new_id()
+        self._album_names[album_id] = name
+        self._album_items[album_id] = []
+        return album_id
 
     def add_to_album(self, album_id: int, item_ids: list[int]) -> None:
-        if album_id not in self._albums:
+        if album_id not in self._album_names:
             return
         held = self._album_items[album_id]
         held += [i for i in item_ids if i in self._items and i not in held]
-
-    def albums(self) -> list[NasAlbum]:
-        return list(self._albums.values())
 
     def album_items(self, album_id: int) -> list[int]:
         return list(self._album_items.get(album_id, []))
@@ -74,14 +69,16 @@ class FakeSynologyPhotos:
     # What the Household would see
 
     def paths(self) -> list[str]:
+        """Paths of every item in the NAS Library."""
         return sorted(i.path for i in self._items.values())
 
     def item(self, path: str) -> FakeItem:
+        """The item at path."""
         return next(i for i in self._items.values() if i.path == path)
 
-    def album_contents(self) -> dict[str, list[str]]:
-        """Album name -> paths of its items (names assumed unique in the test)."""
-        return {
-            a.name: sorted(self._items[i].path for i in self._album_items[a.id])
-            for a in self._albums.values()
-        }
+    def album_contents(self) -> list[tuple[str, list[str]]]:
+        """Each Album as (name, paths of its items), duplicate names kept."""
+        return sorted(
+            (name, sorted(self._items[i].path for i in self._album_items[album_id]))
+            for album_id, name in self._album_names.items()
+        )
