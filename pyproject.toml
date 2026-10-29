@@ -19,7 +19,10 @@ classifiers = [
     "Topic :: Multimedia :: Graphics",
 ]
 
-dependencies = []
+dependencies = [
+    "keyring>=25",
+    "platformdirs>=4",
+]
 
 [project.optional-dependencies]
 dev = [

@@ -8,12 +8,15 @@ All code lives in `src/google_to_synology_photos/`.
 
 | Module | Role |
 |---|---|
-| `cli.py` | The `g2s` command. Parses arguments, connects to the NAS, runs the import, prints the report and writes `report.md`. |
+| `cli.py` | The `g2s` command: `g2s login` and `g2s import <export folder>`. Connects to the NAS, runs the import, prints the report and writes `report.md`. |
+| `login.py` | Login to the NAS as the NAS Account: what is asked, and what is kept where. |
+| `dsm.py` | Transport to the DSM Web API: login, calls, multipart uploads, TLS. |
+| `synology_client.py` | The real Synology Photos client, over the `SYNO.Foto.*` Web API. |
 | `importer.py` | The import use case, `run_import(export_dir, nas) -> Report`. The only entry the CLI calls, and the test seam. |
 | `takeout.py` | Takeout reader. Reads every ZIP of the export in place and returns the photos by `url` and the Albums. |
 | `paths.py` | NAS path rule. |
 | `description.py` | Photo Description builder. Pure. |
-| `synology.py` | `SynologyPhotos`, the interface of the Synology Photos client. |
+| `synology.py` | `SynologyPhotos`, the interface of the Synology Photos client, and `SynologyError`. |
 | `report.py` | Counts and lists collected during a run, rendered as Markdown. |
 
 ## Reading a Takeout Export
@@ -51,19 +54,32 @@ The rule is deterministic: the same photo gets the same path in every export.
 
 `SynologyPhotos` speaks NAS paths and item ids:
 
-- `upload(path, data) -> id`, `item_at(path) -> id | None`;
+- `upload(path, data) -> id`, `overwrite(path, data) -> id`, `item_at(path) -> id | None`, `delete_item(id)`;
 - `set_description(id, text)`, `description(id)`;
-- `create_album(name) -> id`, `add_to_album(album_id, item_ids)`, `album_items(album_id)`.
+- `create_album(name) -> id`, `rename_album(album_id, name)`, `add_to_album(album_id, item_ids)`, `albums()`, `album_items(album_id)`.
 
-Album names are not unique, so Albums are only found by id. Writes answer success even when nothing changed, so the import reads every write back.
+Album names are not unique, so Albums are only found by id. Writes on unknown items answer success and do nothing, so the import reads every write back. Writes on an unknown Album raise `SynologyError`.
 
-`g2s import` has no NAS client and stops with a message before touching the NAS.
+The real client, its API calls and the behaviour measured on the DS923 are described in [Synology Photos API](synology-photos-api.md).
+
+## Login
+
+`g2s import` logs in before it starts; `g2s login` asks everything again.
+
+- The first run asks for the NAS address, the NAS Account user name and its password, plus a 2FA code when 2FA is on.
+- The NAS address, the user name and a certificate the user trusted go to `settings.json` in the user config folder (`platformdirs.user_config_path("g2s")`).
+- The password and the device token go to the OS keyring (service `g2s`). Nothing secret is written to a file.
+- DSM always needs the password. The device token only spares the 2FA code, so later runs need the password from the keyring.
+- A wrong password is removed from the keyring, so the next run asks for it again.
+- When the system does not trust the NAS certificate (a self-signed DSM certificate on a LAN address), the first run shows its SHA-256 fingerprint and asks the user to trust it. A trusted certificate is pinned: later runs accept that certificate only, and do not check the host name.
 
 ## Tests
 
 Tests run the import use case, or the `g2s` CLI, on synthetic data only:
 
 - `tests/takeout_builder.py` builds a synthetic Takeout Export ZIP with French names: Album folders with `métadonnées.json`, year folders, sidecars.
-- `tests/fake_synology.py` is an in-memory fake Synology Photos. It returns ids at upload, keeps the existing file on an upload to a taken path, accepts duplicate Album names, and answers success on unknown ids without doing anything. Setting `descriptions_stick = False` makes description writes silently not stick.
+- `tests/fake_synology.py` is an in-memory fake Synology Photos, true to the behaviour measured on the DS923. Setting `descriptions_stick = False` makes description writes silently not stick.
+- `tests/test_contract.py` is the contract of the client. It runs against the fake always, and against the DS923 with `G2S_CONTRACT=1` (see [Synology Photos API](synology-photos-api.md)).
+- `tests/test_login.py` runs the login with an in-memory keyring and a fake NAS.
 
 Tests assert on what the Household would see in the fake (paths, Albums, Photo Descriptions) and on the report.
