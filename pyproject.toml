@@ -1,38 +1,33 @@
 [project]
 name = "google-to-synology-photos"
 version = "0.1.0"
-description = "A prhost turn google photos archive in synology photos"
+description = "Turn a Google Photos Takeout Export into a NAS Library in Synology Photos"
 readme = "README.md"
 requires-python = ">=3.12"
 license = {text = "MIT"}
 authors = [
     {name = "google-to-synology-photos Team"}
 ]
-keywords = ["data-science", "jupyter", "python"]
+keywords = ["google-photos", "takeout", "synology", "synology-photos"]
 classifiers = [
     "Development Status :: 4 - Beta",
-    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "Environment :: Console",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
-    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Multimedia :: Graphics",
 ]
 
-dependencies = [
-    "ipykernel",
-    "ipywidgets",
-    "python-dotenv",
-    "gitpython",
-    "pandas",
-    "numpy",
-    "matplotlib",
-]
+dependencies = []
 
 [project.optional-dependencies]
 dev = [
     "cruft",
     "pre-commit",
+    "ipykernel",
     "pytest",
+    "pytest-cov",
     "ruff",
     "mypy",
     "mkdocs>=1.5.0",
@@ -54,7 +49,7 @@ Repository = "https://github.com/castorfou/google-to-synology-photos.git"
 Issues = "https://github.com/castorfou/google-to-synology-photos/issues"
 
 [project.scripts]
-google_to_synology_photos_setup = "scripts.setup:main"
+g2s = "google_to_synology_photos.cli:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
