@@ -139,8 +139,8 @@ classmethod-decorators = ["classmethod", "pydantic.validator"]
 python_version = "3.12"
 platform = "linux"
 
-# Chemins à analyser : exclure src/ car déjà dans sys.path via editable install
-files = ["tests"]
+# Chemins à analyser : `mypy` seul vérifie le code et les tests
+files = ["src", "tests"]
 
 # Ne pas chercher de namespace packages pour éviter la détection en double
 namespace_packages = false

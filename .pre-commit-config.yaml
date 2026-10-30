@@ -53,19 +53,15 @@ repos:
         types_or: [python, pyi, jupyter]
 
   # MyPy - Vérification de types statique
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v2.4.0
+  - repo: local
     hooks:
       - id: mypy
         name: mypy (type check)
-        files: ^src/.*\.py$           # Seulement le code source, pas les notebooks
-        additional_dependencies:
-          - pandas-stubs              # Types pour pandas
-          - types-python-dateutil     # Types pour dateutil
-          - types-requests           # Types pour requests
-          - keyring                   # Imported by the g2s login
-          - platformdirs              # Imported by the g2s CLI
-        args: [--config-file=pyproject.toml]
+        # Runs in the project venv, so it sees the dependencies of uv.lock
+        entry: uv run --active mypy
+        language: system
+        types: [python]
+        pass_filenames: false
 
   # Sécurité - Détection de secrets et vulnérabilités
   - repo: https://github.com/Yelp/detect-secrets

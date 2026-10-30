@@ -343,6 +343,10 @@ Labels par défaut : `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for
 
 Contexte unique : `CONTEXT.md` et `docs/adr/` à la racine, créés au besoin. See `docs/agents/domain.md`.
 
+## API du NAS
+
+Comportement mesuré de l'API DSM / Synology Photos : `docs/dev/synology-photos-api.md`. À lire avant de toucher `dsm.py` ou `synology_client.py`.
+
 ## Ressources
 - Dépôt GitHub: https://github.com/castorfou/google-to-synology-photos
 - Documentation du projet: https://castorfou.github.io/google-to-synology-photos
