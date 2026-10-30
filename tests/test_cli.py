@@ -23,7 +23,7 @@ def test_g2s_import_builds_the_library_and_writes_the_report_next_to_the_export(
     export = takeout.write(tmp_path / "takeout" / "2024-01-01")
     nas = FakeSynologyPhotos()
 
-    exit_code = main(["import", str(export)], connect=lambda: nas)
+    exit_code = main(["import", str(export)], connect=lambda ask_again: nas)
 
     assert exit_code == 0
     assert [name for name, _ in nas.album_contents()] == ["Anniversaire"]
@@ -35,6 +35,25 @@ def test_g2s_import_builds_the_library_and_writes_the_report_next_to_the_export(
 
 def test_g2s_import_refuses_a_folder_that_does_not_exist(tmp_path: Path) -> None:
     with pytest.raises(SystemExit) as stop:
-        main(["import", str(tmp_path / "missing")], connect=FakeSynologyPhotos)
+        main(
+            ["import", str(tmp_path / "missing")],
+            connect=lambda ask_again: FakeSynologyPhotos(),
+        )
 
     assert stop.value.code != 0
+
+
+def test_g2s_login_asks_again_for_the_nas_details(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    asked_again: list[bool] = []
+
+    def connect(ask_again: bool) -> FakeSynologyPhotos:
+        asked_again.append(ask_again)
+        return FakeSynologyPhotos()
+
+    exit_code = main(["login"], connect=connect)
+
+    assert exit_code == 0
+    assert asked_again == [True]
+    assert "Logged in" in capsys.readouterr().out

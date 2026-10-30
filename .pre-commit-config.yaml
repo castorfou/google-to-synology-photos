@@ -63,6 +63,8 @@ repos:
           - pandas-stubs              # Types pour pandas
           - types-python-dateutil     # Types pour dateutil
           - types-requests           # Types pour requests
+          - keyring                   # Imported by the g2s login
+          - platformdirs              # Imported by the g2s CLI
         args: [--config-file=pyproject.toml]
 
   # Sécurité - Détection de secrets et vulnérabilités
