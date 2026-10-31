@@ -22,6 +22,7 @@ classifiers = [
 dependencies = [
     "keyring>=25",
     "platformdirs>=4",
+    "pyexiftool>=0.5.6",
 ]
 
 [project.optional-dependencies]
@@ -42,7 +43,8 @@ dev = [
     "mkdocs-awesome-nav",
     "pymdown-extensions",
     "mkdocs-rtd-dropdown",
-    "nbdev>=2.4.6"
+    "nbdev>=2.4.6",
+    "pillow>=13.0.0",
 ]
 
 [project.urls]
@@ -169,6 +171,7 @@ follow_imports = "normal"
 # Configuration pour Data Science
 [[tool.mypy.overrides]]
 module = [
+    "exiftool.*",
     "matplotlib.*",
     "seaborn.*",
     "sklearn.*",

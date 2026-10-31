@@ -8,12 +8,16 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from PIL import ExifTags, Image, TiffImagePlugin
+
 
 # Google writes a non-breaking space in these folder names.
 ROOT = "Takeout/Google\xa0Photos"
 SIDECAR_STEM = ".supplemental-metadata"
 ALBUM_METADATA = "métadonnées.json"
 ROOT_COMMENTS = "commentaires_albums_partagés.json"
+# The date a camera writes in a file, unlike a WhatsApp image, which has none.
+CAMERA_DATE = "2013:04:13 17:00:44"
 
 
 @dataclass
@@ -29,6 +33,8 @@ class SyntheticPhoto:
     motion: bool = False
     # False when the export holds the sidecars of the photo, but never its file.
     has_file: bool = True
+    # The sidecar's geoData: (latitude, longitude, altitude). Zeros mean no position.
+    geo: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
     def sidecar(self, shared: list[dict] | None = None) -> dict:
         ts = str(int(self.taken.timestamp()))
@@ -40,7 +46,13 @@ class SyntheticPhoto:
             "imageViews": "0",
             "creationTime": {"timestamp": ts, "formatted": ""},
             "photoTakenTime": {"timestamp": ts, "formatted": ""},
-            "geoData": {"latitude": 0.0, "longitude": 0.0, "altitude": 0.0},
+            "geoData": {
+                "latitude": self.geo[0],
+                "longitude": self.geo[1],
+                "altitude": self.geo[2],
+                "latitudeSpan": 0.0,
+                "longitudeSpan": 0.0,
+            },
             "url": self.url,
             "googlePhotosOrigin": {"mobileUpload": {}},
         }
@@ -92,17 +104,25 @@ class TakeoutBuilder:
         edited: bool = False,
         motion: bool = False,
         has_file: bool = True,
+        exif_date: str | None = CAMERA_DATE,
+        exif_position: tuple[float, float] | None = None,
+        geo: tuple[float, float, float] = (0.0, 0.0, 0.0),
     ) -> SyntheticPhoto:
-        """Add a photo to an Album; it also sits in its year folder."""
+        """Add a photo to an Album; it also sits in its year folder.
+
+        exif_date and exif_position are what the file itself holds; geo is what
+        the sidecar holds.
+        """
         photo = SyntheticPhoto(
             name,
             url,
             taken,
             caption,
-            data=_jpeg_bytes(url),
-            edited=_jpeg_bytes(f"{url}-edited") if edited else None,
+            data=_jpeg_bytes(url, exif_date, exif_position),
+            edited=_jpeg_bytes(f"{url}-edited", exif_date) if edited else None,
             motion=motion,
             has_file=has_file,
+            geo=geo,
         )
         album.photos.append(photo)
         return photo
@@ -264,10 +284,33 @@ def _year_folder(photo: SyntheticPhoto) -> str:
     return f"{ROOT}/Photos de\xa0{photo.taken.year}"
 
 
-def _jpeg_bytes(seed: str) -> bytes:
-    """Tiny JPEG-looking bytes, unique per seed."""
+def _jpeg_bytes(
+    seed: str,
+    date: str | None = CAMERA_DATE,
+    position: tuple[float, float] | None = None,
+) -> bytes:
+    """A real 1x1 JPEG, unique per seed, holding only the given metadata."""
+    exif = Image.Exif()
+    if date is not None:
+        exif.get_ifd(ExifTags.IFD.Exif)[ExifTags.Base.DateTimeOriginal] = date
+    if position is not None:
+        latitude, longitude = position
+        gps = exif.get_ifd(ExifTags.IFD.GPSInfo)
+        gps[ExifTags.GPS.GPSLatitudeRef] = "N" if latitude >= 0 else "S"
+        gps[ExifTags.GPS.GPSLatitude] = _degrees(latitude)
+        gps[ExifTags.GPS.GPSLongitudeRef] = "E" if longitude >= 0 else "W"
+        gps[ExifTags.GPS.GPSLongitude] = _degrees(longitude)
     buf = io.BytesIO()
-    buf.write(b"\xff\xd8\xff\xe0")
-    buf.write(seed.encode())
-    buf.write(b"\xff\xd9")
+    Image.new("RGB", (1, 1), "white").save(
+        buf, "JPEG", exif=exif, comment=seed.encode()
+    )
     return buf.getvalue()
+
+
+def _degrees(angle: float) -> tuple[TiffImagePlugin.IFDRational, ...]:
+    """An angle as EXIF stores it: positive degrees, then zero minutes and seconds."""
+    return (
+        TiffImagePlugin.IFDRational(abs(angle)),
+        TiffImagePlugin.IFDRational(0),
+        TiffImagePlugin.IFDRational(0),
+    )

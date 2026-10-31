@@ -16,6 +16,7 @@ class Report:
     comments_written: int = 0
     likes_written: int = 0
     failed_writes: list[str] = field(default_factory=list)
+    metadata_not_written: list[str] = field(default_factory=list)
     no_file: list[str] = field(default_factory=list)
     orphan_comments: list[str] = field(default_factory=list)
 
@@ -34,6 +35,8 @@ class Report:
             "",
         ]
         lines += [f"- {w}" for w in self.failed_writes] or ["None."]
+        lines += ["", "## Files sent without their missing date or position", ""]
+        lines += [f"- {p}" for p in self.metadata_not_written] or ["None."]
         lines += ["", "## Album photos with no file in the export", ""]
         lines += [f"- {n}" for n in self.no_file] or ["None."]
         lines += ["", "## Comments that match no photo", ""]

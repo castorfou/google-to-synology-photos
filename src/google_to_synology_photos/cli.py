@@ -17,6 +17,7 @@ from google_to_synology_photos.login import (
     TerminalUser,
     login,
 )
+from google_to_synology_photos.media import ExifToolMissingError
 from google_to_synology_photos.synology import SynologyPhotos
 from google_to_synology_photos.synology_client import SynologyPhotosClient
 from google_to_synology_photos.takeout import SelectedAlbumsExportError
@@ -89,7 +90,7 @@ def main(
 
     try:
         report = run_import(export, connect(False)).render()
-    except SelectedAlbumsExportError as error:
+    except (SelectedAlbumsExportError, ExifToolMissingError) as error:
         raise SystemExit(f"g2s: {error}") from error
     print(report)
     # The report sits next to the export folder, beside the other exports.

@@ -34,12 +34,22 @@ class SelectedAlbumsExportError(Exception):
 
 
 @dataclass(frozen=True)
+class Position:
+    """Where a photo was taken, from its sidecar. Altitude 0 means unknown."""
+
+    latitude: float
+    longitude: float
+    altitude: float
+
+
+@dataclass(frozen=True)
 class Photo:
     """A photo or video of the export, identified by its sidecar url."""
 
     url: str
     name: str
     taken: datetime
+    position: Position | None
     caption: str
     zip_path: Path
     member: str
@@ -108,6 +118,15 @@ def _media_name(name: str, index: str, edited_suffix: str = "") -> str:
     if not dot:
         stem, ext = name, ""
     return f"{stem}{edited_suffix}{index}{dot}{ext}"
+
+
+def _position(sidecar: dict) -> Position | None:
+    """Return the geoData of a sidecar; Google writes zeros when it has none."""
+    geo = sidecar.get("geoData", {})
+    latitude, longitude = geo.get("latitude", 0.0), geo.get("longitude", 0.0)
+    if not (latitude or longitude):
+        return None
+    return Position(latitude, longitude, geo.get("altitude", 0.0))
 
 
 # What the same Comment shares in the root file and elsewhere.
@@ -220,6 +239,7 @@ def read_export(export_dir: Path) -> Export:
                 taken=datetime.fromtimestamp(
                     int(sidecar["photoTakenTime"]["timestamp"]), UTC
                 ),
+                position=_position(sidecar),
                 caption=sidecar.get("description", ""),
                 zip_path=zip_of[media],
                 member=media,

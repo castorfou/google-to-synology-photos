@@ -14,6 +14,7 @@ All code lives in `src/google_to_synology_photos/`.
 | `synology_client.py` | The real Synology Photos client, over the `SYNO.Foto.*` Web API. |
 | `importer.py` | The import use case, `run_import(export_dir, nas) -> Report`. The only entry the CLI calls, and the test seam. |
 | `takeout.py` | Takeout reader. Reads every ZIP of the export in place, picks the file of each photo, and returns the photos by `url`, the Albums with their Comments and Likes, and the orphan Comments. Refuses an export of selected Albums. |
+| `media.py` | Media preparer: writes into a photo the date and position it lacks, with ExifTool. |
 | `paths.py` | NAS path rule. |
 | `description.py` | Photo Description builder. Pure. Holds the layout of the text. |
 | `synology.py` | `SynologyPhotos`, the interface of the Synology Photos client, and `SynologyError`. |
@@ -28,6 +29,7 @@ The reader lists every ZIP before it pairs anything: a media file and its sideca
 - A sidecar is named `<name>.supplemental-metadata.json`. When a name repeats in a folder, Google adds an index: `<name>.supplemental-metadata(1).json` goes with `IMG(1).JPG`. The index can differ from one folder to another, so a sidecar is only paired inside its own folder. Its `title` keeps the plain name.
 - Only photos that belong to at least one Album are imported.
 - The date taken is the sidecar `photoTakenTime.timestamp`, in UTC. The Caption is the sidecar `description`.
+- The position is the sidecar `geoData`. Google writes zeros there when it has no position, so `0, 0` means none.
 - Google writes a non-breaking space in `Google Photos` and in `Photos de <year>`.
 
 ### Comments and Likes
@@ -92,6 +94,19 @@ kept as they are
 - When more than one Album brings Comments or Likes to a photo, each of these blocks starts with a line holding the Album title, and Albums come in folder order. Album texts on one photo follow the same rule.
 - The oldest photo is chosen by date taken, then by `url`, at every run, so the Album text moves when an older photo joins the Album.
 
+## Files sent to the NAS
+
+`MediaPreparer` gives the exact bytes sent for a photo. The file keeps what it holds, and only what it lacks is written:
+
+- `DateTimeOriginal` from the date taken, when the file has none. A date made of zeros or spaces counts as none. The value is in UTC: EXIF has no time zone here, and Synology Photos shows it as it is.
+- `GPSLatitude`, `GPSLongitude` and their references from the position, when the file has no position. `GPSAltitude` and its reference follow when the altitude is not 0.
+
+When a file lacks nothing, its bytes are sent untouched. No text is ever written into a file: Photo Descriptions go through the API. The year folder of the NAS path always comes from `photoTakenTime`, never from the file.
+
+- **Formats.** JPEG and PNG, recognised by their content, because Takeout has JPEGs named `.png`. Videos, GIFs and any other file are sent untouched.
+- **ExifTool.** It rewrites the metadata and leaves the image data as it is. One `exiftool -stay_open` process serves the whole run, through PyExifTool. Without ExifTool, `g2s` stops before any upload and says how to install it.
+- **Failure.** A file ExifTool cannot read or write is sent untouched, and the report lists it under *Files sent without their missing date or position*.
+
 ## NAS path rule
 
 A photo is stored at:
@@ -108,7 +123,7 @@ The rule is deterministic: the same photo gets the same path in every export.
 ## Order of a run
 
 1. Read the export.
-2. Upload every photo at its path. An upload to a path that is already taken keeps the file there and returns its id.
+2. Prepare every photo and upload it at its path. An upload to a path that is already taken keeps the file there and returns its id.
 3. Create every Album with its Google title and add its photos.
 4. Set each Photo Description that differs from the text on the NAS. An empty text clears what is there.
 5. Each write is read back right after it is made. A write that does not stick is listed in the report under *Writes that did not stick*.
@@ -142,7 +157,8 @@ The real client, its API calls and the behaviour measured on the DS923 are descr
 
 Tests run the import use case, or the `g2s` CLI, on synthetic data only:
 
-- `tests/takeout_builder.py` builds a synthetic Takeout Export with French names, in one or several ZIPs: Album folders with `métadonnées.json`, Album folders of sidecars only, year folders, sidecars, repeated names with their `(1)` index, `-modifié` files, Motion Photos, and photos with no file.
+- `tests/takeout_builder.py` builds a synthetic Takeout Export with French names, in one or several ZIPs: Album folders with `métadonnées.json`, Album folders of sidecars only, year folders, sidecars, repeated names with their `(1)` index, `-modifié` files, Motion Photos, and photos with no file. Its media are real 1x1 JPEGs that hold a date by default, like a camera file, and the date and position in the file and in the sidecar can be set for each photo.
+- `tests/test_file_metadata.py` runs ExifTool for real on tiny JPEGs and PNGs, and reads the sent files back with Pillow, so that the check does not depend on the tool that writes.
 - `tests/fake_synology.py` is an in-memory fake Synology Photos, true to the behaviour measured on the DS923. Setting `descriptions_stick = False` makes description writes silently not stick.
 - `tests/test_contract.py` is the contract of the client. It runs against the fake always, and against the DS923 with `G2S_CONTRACT=1` (see [Synology Photos API](synology-photos-api.md)).
 - `tests/test_login.py` runs the login with an in-memory keyring and a fake NAS.
