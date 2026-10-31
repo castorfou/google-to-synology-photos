@@ -35,6 +35,9 @@ jobs:
     - name: 📦 Install dependencies
       run: uv sync --extra dev
 
+    - name: 📷 Install ExifTool
+      run: sudo apt-get update -qq && sudo apt-get install -y -qq libimage-exiftool-perl
+
     - name: 🔍 Lint with ruff
       run: uv run ruff check . --output-format=github
 

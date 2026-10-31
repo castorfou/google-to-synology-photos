@@ -7,6 +7,7 @@ read back, and a write that did not stick goes to the report.
 from pathlib import Path
 
 from google_to_synology_photos.description import comment_line, photo_descriptions
+from google_to_synology_photos.media import MediaPreparer
 from google_to_synology_photos.paths import nas_path
 from google_to_synology_photos.report import Report
 from google_to_synology_photos.synology import SynologyPhotos
@@ -32,14 +33,18 @@ def run_import(export_dir: Path, nas: SynologyPhotos) -> Report:
     ] + [f"No known Album: {comment_line(comment)}" for comment in export.orphans]
 
     item_ids: dict[str, int] = {}
-    for url, photo in export.photos.items():
-        path = nas_path(photo)
-        item_id = nas.upload(path, photo.read())
-        if nas.item_at(path) != item_id:
-            report.failed_writes.append(f"Upload of {path}")
-            continue
-        item_ids[url] = item_id
-        report.uploaded += 1
+    with MediaPreparer() as media:
+        for url, photo in export.photos.items():
+            path = nas_path(photo)
+            prepared = media.prepare(photo)
+            if not prepared.complete:
+                report.metadata_not_written.append(path)
+            item_id = nas.upload(path, prepared.data)
+            if nas.item_at(path) != item_id:
+                report.failed_writes.append(f"Upload of {path}")
+                continue
+            item_ids[url] = item_id
+            report.uploaded += 1
 
     for album in export.albums:
         album_id = nas.create_album(album.title)
