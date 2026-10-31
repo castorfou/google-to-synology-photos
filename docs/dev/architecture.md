@@ -14,7 +14,7 @@ All code lives in `src/google_to_synology_photos/`.
 | `synology_client.py` | The real Synology Photos client, over the `SYNO.Foto.*` Web API. |
 | `importer.py` | The import use case, `run_import(export_dir, nas) -> Report`. The only entry the CLI calls, and the test seam. |
 | `takeout.py` | Takeout reader. Reads every ZIP of the export in place, picks the file of each photo, and returns the photos by `url`, the Albums with their Comments and Likes, and the orphan Comments. Refuses an export of selected Albums. |
-| `media.py` | Media preparer: writes into a photo the date and position it lacks, with ExifTool. |
+| `media.py` | Media preparer: writes into a photo the date and position it lacks, with ExifTool, and converts the videos Synology Photos cannot play, with ffmpeg. |
 | `paths.py` | NAS path rule. |
 | `description.py` | Photo Description builder. Pure. Holds the layout of the text. |
 | `synology.py` | `SynologyPhotos`, the interface of the Synology Photos client, and `SynologyError`. |
@@ -103,9 +103,21 @@ kept as they are
 
 Only the EXIF group counts: a date or position in XMP stays as it is, and the EXIF one is still written. When a file lacks nothing, its bytes are sent untouched. No text is ever written into a file: Photo Descriptions go through the API. The year folder of the NAS path always comes from `photoTakenTime`, never from the file.
 
-- **Formats.** JPEG and PNG, recognised by their content, because Takeout has JPEGs named `.png`. Videos, GIFs and any other file are sent untouched.
+- **Formats.** JPEG and PNG, recognised by their content, because Takeout has JPEGs named `.png`. Videos follow the rules below. GIFs and any other file are sent untouched.
 - **ExifTool.** It rewrites the metadata and leaves the image data as it is. One `exiftool -stay_open` process serves the whole run, through PyExifTool. Without ExifTool, `g2s` stops before any upload and says how to install it.
 - **Failure.** A file ExifTool cannot read or write is sent untouched, and the report lists it under *Files sent without their missing date or position*.
+
+### Videos
+
+A file is a video when its extension says so: ffprobe would take a HEIC photo for an HEVC video. ffprobe then tells by content whether Synology Photos can play it, because Takeout has WMV files named `.avi`.
+
+- **Converted:** the AVI, ASF (WMV) and MPEG formats, and HEVC, MPEG-1 and MPEG-2 video in any format.
+- **Sent untouched:** every other video, H.264 MP4 and MOV among them.
+
+A conversion gives an MP4 with H.264 video (CRF 20, 8-bit 4:2:0, even dimensions) and AAC audio, in place of the original, which stays in the ZIPs. The date taken goes into `creation_time`, in UTC, and replaces any date in the original. No text is written.
+
+- **ffmpeg.** `ffmpeg` and `ffprobe` must be on the `PATH`. Without them, `g2s` stops before any upload and says how to install them.
+- **Failure.** A video that ffprobe cannot read or ffmpeg cannot convert is not uploaded: sent as it is, it would sit beside its MP4 after a later run. The report lists its ZIP member under *Videos that failed to convert, not uploaded*, and the run goes on. It is in no Album, its own Comments and Likes are not written, and the text of its Album goes to the next oldest photo. A later run tries it again.
 
 ## NAS path rule
 
@@ -117,6 +129,7 @@ Photos/Google Photos/<year taken>/<original name>__<6 chars>.<ext>
 
 - The 6 chars are the first 6 characters of the lowercase base32 encoding of the SHA-256 of the photo's `url`.
 - The characters `\ / : * ? " < > |` and control characters in the name are replaced with `_`.
+- A converted video keeps its original name and takes the extension `.mp4`.
 
 The rule is deterministic: the same photo gets the same path in every export.
 
@@ -159,6 +172,7 @@ Tests run the import use case, or the `g2s` CLI, on synthetic data only:
 
 - `tests/takeout_builder.py` builds a synthetic Takeout Export with French names, in one or several ZIPs: Album folders with `métadonnées.json`, Album folders of sidecars only, year folders, sidecars, repeated names with their `(1)` index, `-modifié` files, Motion Photos, and photos with no file. Its media are real 1x1 JPEGs that hold a date by default, like a camera file, and the date and position in the file and in the sidecar can be set for each photo.
 - `tests/test_file_metadata.py` runs ExifTool for real on tiny JPEGs and PNGs, and reads the sent files back with Pillow, so that the check does not depend on the tool that writes.
+- `tests/test_video_conversion.py` runs ffmpeg for real on tiny videos, and reads the sent files back with ffprobe and ExifTool.
 - `tests/fake_synology.py` is an in-memory fake Synology Photos, true to the behaviour measured on the DS923. Setting `descriptions_stick = False` makes description writes silently not stick.
 - `tests/test_contract.py` is the contract of the client. It runs against the fake always, and against the DS923 with `G2S_CONTRACT=1` (see [Synology Photos API](synology-photos-api.md)).
 - `tests/test_login.py` runs the login with an in-memory keyring and a fake NAS.

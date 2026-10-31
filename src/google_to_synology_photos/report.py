@@ -11,12 +11,14 @@ class Report:
     """What a run did, and what did not reach the NAS Library."""
 
     uploaded: int = 0
+    videos_converted: int = 0
     albums_created: int = 0
     descriptions_written: int = 0
     comments_written: int = 0
     likes_written: int = 0
     failed_writes: list[str] = field(default_factory=list)
     metadata_not_written: list[str] = field(default_factory=list)
+    failed_conversions: list[str] = field(default_factory=list)
     no_file: list[str] = field(default_factory=list)
     orphan_comments: list[str] = field(default_factory=list)
 
@@ -26,6 +28,7 @@ class Report:
             "# Import report",
             "",
             f"- Photos and videos uploaded: {self.uploaded}",
+            f"- Videos converted: {self.videos_converted}",
             f"- Albums created: {self.albums_created}",
             f"- Photo Descriptions written: {self.descriptions_written}",
             f"- Comments written: {self.comments_written}",
@@ -37,6 +40,8 @@ class Report:
         lines += [f"- {w}" for w in self.failed_writes] or ["None."]
         lines += ["", "## Files sent without their missing date or position", ""]
         lines += [f"- {p}" for p in self.metadata_not_written] or ["None."]
+        lines += ["", "## Videos that failed to convert, not uploaded", ""]
+        lines += [f"- {m}" for m in self.failed_conversions] or ["None."]
         lines += ["", "## Album photos with no file in the export", ""]
         lines += [f"- {n}" for n in self.no_file] or ["None."]
         lines += ["", "## Comments that match no photo", ""]

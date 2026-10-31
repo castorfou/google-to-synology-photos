@@ -2,6 +2,7 @@
 
 ``Photos/Google Photos/<year taken>/<original name>__<6 chars>.<ext>``, where the
 6 chars are the first base32 characters (lowercase) of the SHA-256 of the url.
+A converted video has the extension of what it became.
 The rule is deterministic, so a photo gets the same path in every export.
 """
 
@@ -22,11 +23,13 @@ def short_hash(url: str) -> str:
     return base64.b32encode(digest).decode().lower()[:6]
 
 
-def nas_path(photo: Photo) -> str:
-    """Return the NAS path of photo."""
+def nas_path(photo: Photo, extension: str | None = None) -> str:
+    """Return the NAS path of photo; extension replaces the one of its name."""
     stem, dot, ext = photo.name.rpartition(".")
     if not dot:
         stem, ext = photo.name, ""
+    if extension is not None:
+        dot, ext = ".", extension
     stem, ext = UNSAFE.sub("_", stem), UNSAFE.sub("_", ext)
     return (
         f"{LIBRARY_ROOT}/{photo.taken.year}/{stem}__{short_hash(photo.url)}{dot}{ext}"

@@ -7,7 +7,7 @@ read back, and a write that did not stick goes to the report.
 from pathlib import Path
 
 from google_to_synology_photos.description import comment_line, photo_descriptions
-from google_to_synology_photos.media import MediaPreparer
+from google_to_synology_photos.media import ConversionFailedError, MediaPreparer
 from google_to_synology_photos.paths import nas_path
 from google_to_synology_photos.report import Report
 from google_to_synology_photos.synology import SynologyPhotos
@@ -33,10 +33,16 @@ def run_import(export_dir: Path, nas: SynologyPhotos) -> Report:
     ] + [f"No known Album: {comment_line(comment)}" for comment in export.orphans]
 
     item_ids: dict[str, int] = {}
+    paths: dict[str, str] = {}
     with MediaPreparer() as media:
         for url, photo in export.photos.items():
-            path = nas_path(photo)
-            prepared = media.prepare(photo)
+            try:
+                prepared = media.prepare(photo)
+            except ConversionFailedError:
+                # Not sent as it is: its MP4 would land beside it at a later run.
+                report.failed_conversions.append(photo.member)
+                continue
+            path = paths[url] = nas_path(photo, prepared.extension)
             if not prepared.complete:
                 report.metadata_not_written.append(path)
             item_id = nas.upload(path, prepared.data)
@@ -45,10 +51,14 @@ def run_import(export_dir: Path, nas: SynologyPhotos) -> Report:
                 continue
             item_ids[url] = item_id
             report.uploaded += 1
+            if prepared.extension is not None:
+                report.videos_converted += 1
 
     for album in export.albums:
+        # What is not on the NAS holds no Album text: it goes to the next photo.
+        album.urls = [url for url in album.urls if url in item_ids]
         album_id = nas.create_album(album.title)
-        wanted = [item_ids[url] for url in album.urls if url in item_ids]
+        wanted = [item_ids[url] for url in album.urls]
         nas.add_to_album(album_id, wanted)
         report.albums_created += 1
         if set(wanted) - set(nas.album_items(album_id)):
@@ -66,7 +76,6 @@ def run_import(export_dir: Path, nas: SynologyPhotos) -> Report:
             report.comments_written += description.comments
             report.likes_written += description.likes
         else:
-            path = nas_path(export.photos[url])
-            report.failed_writes.append(f"Photo Description of {path}")
+            report.failed_writes.append(f"Photo Description of {paths[url]}")
 
     return report

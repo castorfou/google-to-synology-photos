@@ -228,16 +228,16 @@ def test_a_jpeg_named_png_arrives_with_the_date_taken_from_google_photos(
     assert report.metadata_not_written == []
 
 
-def test_a_video_is_sent_as_it_is(tmp_path: Path) -> None:
+def test_a_file_of_no_known_kind_is_sent_as_it_is(tmp_path: Path) -> None:
     takeout = TakeoutBuilder()
     album = takeout.album("Été")
-    video = takeout.photo(album, "VID.mp4", URL, taken=TAKEN, geo=(48.8, 2.3, 0.0))
-    video.data = b"\x00\x00\x00\x18ftypmp42 not a real video"
+    other = takeout.photo(album, "Anim.gif", URL, taken=TAKEN, geo=(48.8, 2.3, 0.0))
+    other.data = b"GIF89a not a real animation"
     nas = FakeSynologyPhotos()
 
     report = run_import(takeout.write(tmp_path / "export"), nas)
 
-    assert nas.item("Photos/Google Photos/2016/VID__yxk3qp.mp4").data == video.data
+    assert nas.item("Photos/Google Photos/2016/Anim__yxk3qp.gif").data == other.data
     assert report.metadata_not_written == []
 
 
