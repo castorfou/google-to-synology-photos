@@ -21,6 +21,9 @@ def run_import(export_dir: Path, nas: SynologyPhotos) -> Report:
     """
     report = Report()
     export = read_export(export_dir)
+    report.no_file = [
+        f"{album.title}: {name}" for album in export.albums for name in album.no_file
+    ]
 
     item_ids: dict[str, int] = {}
     for url, photo in export.photos.items():

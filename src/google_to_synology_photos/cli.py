@@ -19,6 +19,7 @@ from google_to_synology_photos.login import (
 )
 from google_to_synology_photos.synology import SynologyPhotos
 from google_to_synology_photos.synology_client import SynologyPhotosClient
+from google_to_synology_photos.takeout import SelectedAlbumsExportError
 
 
 REPORT_NAME = "report.md"
@@ -86,7 +87,10 @@ def main(
     if not export.is_dir():
         parser.error(f"{export} is not a folder")
 
-    report = run_import(export, connect(False)).render()
+    try:
+        report = run_import(export, connect(False)).render()
+    except SelectedAlbumsExportError as error:
+        raise SystemExit(f"g2s: {error}") from error
     print(report)
     # The report sits next to the export folder, beside the other exports.
     (export.resolve().parent / REPORT_NAME).write_text(report, encoding="utf-8")

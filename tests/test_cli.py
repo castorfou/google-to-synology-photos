@@ -43,6 +43,29 @@ def test_g2s_import_refuses_a_folder_that_does_not_exist(tmp_path: Path) -> None
     assert stop.value.code != 0
 
 
+def test_g2s_import_refuses_a_selected_albums_export_with_a_clear_message(
+    tmp_path: Path,
+) -> None:
+    takeout = TakeoutBuilder()
+    album = takeout.album("Anniversaire", sidecars_only=True)
+    takeout.photo(
+        album,
+        "IMG_0002.JPG",
+        "https://photos.google.com/photo/AF1QipSyntheticPhotoUrl0002",
+        has_file=False,
+    )
+    export = takeout.write(tmp_path / "takeout" / "2024-01-01")
+    nas = FakeSynologyPhotos()
+
+    with pytest.raises(SystemExit) as stop:
+        main(["import", str(export)], connect=lambda ask_again: nas)
+
+    assert "full Takeout Export" in str(stop.value.code)
+    assert "Anniversaire" in str(stop.value.code)
+    assert nas.paths() == []
+    assert not (tmp_path / "takeout" / "report.md").exists()
+
+
 def test_g2s_login_asks_again_for_the_nas_details(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
