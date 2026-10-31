@@ -165,6 +165,21 @@ def test_folder_items_gives_the_items_of_a_folder_by_path(nas: Nas) -> None:
     assert found == {nas.path("2013/red.jpg"): photo}
 
 
+def test_folder_items_also_gives_the_items_of_its_subfolders(nas: Nas) -> None:
+    photo = nas.client.upload(nas.path("lib/2013/red.jpg"), nas.media.photo)
+    other = nas.client.upload(nas.path("lib/2014/a/blue.jpg"), nas.media.other_photo)
+    video = nas.client.upload(nas.path("lib/c.mp4"), nas.media.video)
+    nas.client.upload(nas.path("outside/d.jpg"), nas.media.photo)
+
+    found = nas.client.folder_items(nas.path("lib"))
+
+    assert found == {
+        nas.path("lib/2013/red.jpg"): photo,
+        nas.path("lib/2014/a/blue.jpg"): other,
+        nas.path("lib/c.mp4"): video,
+    }
+
+
 def test_folder_items_of_a_missing_folder_is_empty(nas: Nas) -> None:
     assert nas.client.folder_items(nas.path("1999")) == {}
 
@@ -220,6 +235,18 @@ def test_album_holds_the_items_added_to_it(nas: Nas) -> None:
     ]
 
 
+def test_an_album_and_its_folder_give_the_same_item_ids(nas: Nas) -> None:
+    photo = nas.client.upload(nas.path("lib/red.jpg"), nas.media.photo)
+    video = nas.client.upload(nas.path("lib/c.mp4"), nas.media.video)
+    album_id = nas.client.create_album("g2s contract ids")
+
+    nas.client.add_to_album(album_id, [photo, video])
+
+    assert set(nas.client.album_items(album_id)) == set(
+        nas.client.folder_items(nas.path("lib")).values()
+    )
+
+
 def test_album_names_are_not_unique(nas: Nas) -> None:
     first = nas.client.create_album("g2s contract twin")
     second = nas.client.create_album("g2s contract twin")
@@ -237,6 +264,15 @@ def test_album_rename(nas: Nas) -> None:
     assert (album_id, "g2s contract new") in [
         (a.id, a.name) for a in nas.client.albums()
     ]
+
+
+def test_album_names_are_kept_exactly(nas: Nas) -> None:
+    name = "  g2s contract/é: 🌊  "
+    album_id = nas.client.create_album("g2s contract old")
+
+    nas.client.rename_album(album_id, name)
+
+    assert (album_id, name) in [(a.id, a.name) for a in nas.client.albums()]
 
 
 def test_writes_on_an_unknown_album_fail(nas: Nas) -> None:

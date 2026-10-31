@@ -37,6 +37,8 @@ class FakeSynologyPhotos:
         self._next_id = 1
         # Set to False to make description writes silently not stick.
         self.descriptions_stick = True
+        # Set to False to make Album renames silently not stick.
+        self.album_names_stick = True
         self.writes = 0
         self.writes_left: int | None = None
 
@@ -71,11 +73,7 @@ class FakeSynologyPhotos:
 
     def folder_items(self, folder: str) -> dict[str, int]:
         prefix = f"{folder}/"
-        return {
-            i.path: i.id
-            for i in self._items.values()
-            if i.path.startswith(prefix) and "/" not in i.path.removeprefix(prefix)
-        }
+        return {i.path: i.id for i in self._items.values() if i.path.startswith(prefix)}
 
     def item_at(self, path: str) -> int | None:
         return next((i.id for i in self._items.values() if i.path == path), None)
@@ -106,7 +104,8 @@ class FakeSynologyPhotos:
     def rename_album(self, album_id: int, name: str) -> None:
         self._write()
         self._check_album(album_id, "rename_album")
-        self._album_names[album_id] = name
+        if self.album_names_stick:
+            self._album_names[album_id] = name
 
     def add_to_album(self, album_id: int, item_ids: list[int]) -> None:
         self._write()
@@ -119,6 +118,13 @@ class FakeSynologyPhotos:
 
     def album_items(self, album_id: int) -> list[int]:
         return list(self._album_items.get(album_id, []))
+
+    # What the Household can do on the NAS
+
+    def delete_album(self, album_id: int) -> None:
+        """Delete an Album: its photos stay."""
+        del self._album_names[album_id]
+        del self._album_items[album_id]
 
     def _check_album(self, album_id: int, call: str) -> None:
         if album_id not in self._album_names:

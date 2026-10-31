@@ -92,9 +92,13 @@ class SynologyPhotosClient:
         return item_id
 
     def folder_items(self, folder: str) -> dict[str, int]:
-        """Return the id of each item of a NAS folder, by path."""
-        listing = self._list_folder("/" + folder.removeprefix(f"{PHOTOS_ROOT}/"))
-        return {f"{folder}/{name}": item_id for name, item_id in listing.items()}
+        """Return the id of each item of a NAS folder and its subfolders, by path."""
+        top = "/" + folder.removeprefix(f"{PHOTOS_ROOT}/")
+        return {
+            f"{PHOTOS_ROOT}{subfolder}/{name}": item_id
+            for subfolder in self._folder_tree(top)
+            for name, item_id in self._list_folder(subfolder).items()
+        }
 
     def item_at(self, path: str) -> int | None:
         """Return the id of the item at path, or None."""
@@ -175,6 +179,14 @@ class SynologyPhotosClient:
         )
         self._listings[folder] = {i["filename"]: int(i["id"]) for i in items}
         return self._listings[folder]
+
+    def _folder_tree(self, folder: str) -> list[str]:
+        """Return a folder and every folder under it; none if it is missing."""
+        folder_id = self._find_folder(folder)
+        if folder_id is None:
+            return []
+        children = self._pages("SYNO.Foto.Browse.Folder", 2, id=folder_id)
+        return [folder, *(f for c in children for f in self._folder_tree(c["name"]))]
 
     def _find_folder(self, folder: str) -> int | None:
         """Return the id of a Synology Photos folder, or None if it is missing."""

@@ -14,7 +14,9 @@ class Report:
     already_on_nas: int = 0
     videos_converted: int = 0
     albums_created: int = 0
+    albums_renamed: int = 0
     descriptions_written: int = 0
+    descriptions_rewritten: int = 0
     comments_written: int = 0
     likes_written: int = 0
     failed_writes: list[str] = field(default_factory=list)
@@ -32,7 +34,9 @@ class Report:
             f"- Already on the NAS: {self.already_on_nas}",
             f"- Videos converted: {self.videos_converted}",
             f"- Albums created: {self.albums_created}",
+            f"- Albums renamed: {self.albums_renamed}",
             f"- Photo Descriptions written: {self.descriptions_written}",
+            f"- Photo Descriptions rewritten: {self.descriptions_rewritten}",
             f"- Comments written: {self.comments_written}",
             f"- Likes written: {self.likes_written}",
             "",
