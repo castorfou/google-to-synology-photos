@@ -91,6 +91,11 @@ class SynologyPhotosClient:
         self._wait_for_reindex(item_id, len(data))
         return item_id
 
+    def folder_items(self, folder: str) -> dict[str, int]:
+        """Return the id of each item of a NAS folder, by path."""
+        listing = self._list_folder("/" + folder.removeprefix(f"{PHOTOS_ROOT}/"))
+        return {f"{folder}/{name}": item_id for name, item_id in listing.items()}
+
     def item_at(self, path: str) -> int | None:
         """Return the id of the item at path, or None."""
         folder, name = _split(path)
@@ -146,10 +151,11 @@ class SynologyPhotosClient:
             )
 
     def albums(self) -> list[NasAlbum]:
-        """Return every Album."""
+        """Return every normal Album: only those can receive items."""
         return [
             NasAlbum(int(a["id"]), a["name"])
             for a in self._pages("SYNO.Foto.Browse.Album", 2)
+            if a["type"] == "normal"
         ]
 
     def album_items(self, album_id: int) -> list[int]:

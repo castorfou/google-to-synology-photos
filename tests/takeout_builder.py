@@ -75,6 +75,8 @@ class SyntheticAlbum:
     description: str = ""
     # The sharedAlbumComments of the Album's métadonnées.json.
     album_shared: list[dict] = field(default_factory=list)
+    # The folder name, when it differs from the title: two Albums can share one.
+    folder: str = ""
 
 
 class TakeoutBuilder:
@@ -91,11 +93,15 @@ class TakeoutBuilder:
         self.edited_suffix = edited_suffix
 
     def album(
-        self, title: str, sidecars_only: bool = False, description: str = ""
+        self,
+        title: str,
+        sidecars_only: bool = False,
+        description: str = "",
+        folder: str = "",
     ) -> SyntheticAlbum:
         """Add an Album folder with its métadonnées.json."""
         album = SyntheticAlbum(
-            title, sidecars_only=sidecars_only, description=description
+            title, sidecars_only=sidecars_only, description=description, folder=folder
         )
         self.albums.append(album)
         return album
@@ -206,7 +212,7 @@ class TakeoutBuilder:
         folders = _ExportFiles(self.edited_suffix)
         in_year_folder: set[str] = set()
         for album in self.albums:
-            folder = f"{ROOT}/{album.title}"
+            folder = f"{ROOT}/{album.folder or album.title}"
             folders.add_album(folder, album)
             for photo in album.photos:
                 # An Album photo also sits in its year folder.
