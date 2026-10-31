@@ -13,6 +13,7 @@ from pathlib import Path
 ROOT = "Takeout/Google\xa0Photos"
 SIDECAR_STEM = ".supplemental-metadata"
 ALBUM_METADATA = "métadonnées.json"
+ROOT_COMMENTS = "commentaires_albums_partagés.json"
 
 
 @dataclass
@@ -29,9 +30,11 @@ class SyntheticPhoto:
     # False when the export holds the sidecars of the photo, but never its file.
     has_file: bool = True
 
-    def sidecar(self) -> dict:
+    def sidecar(self, shared: list[dict] | None = None) -> dict:
         ts = str(int(self.taken.timestamp()))
+        extra = {"sharedAlbumComments": shared} if shared else {}
         return {
+            **extra,
             "title": self.name,
             "description": self.caption,
             "imageViews": "0",
@@ -49,20 +52,33 @@ class SyntheticAlbum:
     photos: list[SyntheticPhoto] = field(default_factory=list)
     # True when the folder holds only sidecars: the media sit in year folders.
     sidecars_only: bool = False
+    # The sharedAlbumComments of each photo's sidecar in this Album, by url.
+    shared: dict[str, list[dict]] = field(default_factory=dict)
+    description: str = ""
+    # The sharedAlbumComments of the Album's métadonnées.json.
+    album_shared: list[dict] = field(default_factory=list)
 
 
 class TakeoutBuilder:
     """Collects Albums and photos, then writes them as Takeout ZIPs."""
 
-    def __init__(self, edited_suffix: str = "-modifié") -> None:
+    def __init__(
+        self, edited_suffix: str = "-modifié", root_comments: str = ROOT_COMMENTS
+    ) -> None:
         self.albums: list[SyntheticAlbum] = []
+        self.root_comments_name = root_comments
+        self.root_comments: list[dict] = []
         # Photos in no Album: they sit only in their year folder.
         self.loose = SyntheticAlbum("")
         self.edited_suffix = edited_suffix
 
-    def album(self, title: str, sidecars_only: bool = False) -> SyntheticAlbum:
+    def album(
+        self, title: str, sidecars_only: bool = False, description: str = ""
+    ) -> SyntheticAlbum:
         """Add an Album folder with its métadonnées.json."""
-        album = SyntheticAlbum(title, sidecars_only=sidecars_only)
+        album = SyntheticAlbum(
+            title, sidecars_only=sidecars_only, description=description
+        )
         self.albums.append(album)
         return album
 
@@ -95,6 +111,61 @@ class TakeoutBuilder:
         """Put a photo that already exists in one more Album."""
         album.photos.append(photo)
 
+    def comment(
+        self,
+        album: SyntheticAlbum,
+        photo: SyntheticPhoto,
+        author: str,
+        when: datetime,
+        text: str,
+    ) -> None:
+        """Add a Comment on a photo, in the photo's sidecar of this Album."""
+        album.shared.setdefault(photo.url, []).append(
+            {"contentOwnerName": author, "creationTime": _time(when), "text": text}
+        )
+
+    def like(
+        self, album: SyntheticAlbum, photo: SyntheticPhoto, author: str, when: datetime
+    ) -> None:
+        """Add a Like on a photo, in the photo's sidecar of this Album."""
+        album.shared.setdefault(photo.url, []).append(
+            {"contentOwnerName": author, "creationTime": _time(when), "liked": True}
+        )
+
+    def album_comment(
+        self, album: SyntheticAlbum, author: str, when: datetime, text: str
+    ) -> None:
+        """Add a Comment on the Album itself, in its métadonnées.json."""
+        album.album_shared.append(
+            {"contentOwnerName": author, "creationTime": _time(when), "text": text}
+        )
+
+    def album_like(self, album: SyntheticAlbum, author: str, when: datetime) -> None:
+        """Add a Like on the Album itself, in its métadonnées.json."""
+        album.album_shared.append(
+            {"contentOwnerName": author, "creationTime": _time(when), "liked": True}
+        )
+
+    def root_comment(self, share_id: str, when: datetime, text: str) -> None:
+        """Add a Comment to the root file: it has a share link, but no author."""
+        self.root_comments.append(
+            {
+                "text": text,
+                "creationTime": _time(when),
+                "contentUrl": f"https://photos.google.com/share/{share_id}",
+            }
+        )
+
+    def root_like(self, share_id: str, when: datetime) -> None:
+        """Add a Like to the root file: it has a share link, but no author."""
+        self.root_comments.append(
+            {
+                "liked": True,
+                "creationTime": _time(when),
+                "contentUrl": f"https://photos.google.com/share/{share_id}",
+            }
+        )
+
     def loose_photo(self, name: str, url: str) -> SyntheticPhoto:
         """Add a photo that belongs to no Album."""
         return self.photo(self.loose, name, url)
@@ -110,15 +181,25 @@ class TakeoutBuilder:
         in_year_folder: set[str] = set()
         for album in self.albums:
             folder = f"{ROOT}/{album.title}"
-            folders.add_album(folder, album.title)
+            folders.add_album(folder, album)
             for photo in album.photos:
                 # An Album photo also sits in its year folder.
-                folders.add_photo(folder, photo, with_media=not album.sidecars_only)
+                folders.add_photo(
+                    folder,
+                    photo,
+                    with_media=not album.sidecars_only,
+                    shared=album.shared.get(photo.url),
+                )
                 if year_folders and photo.url not in in_year_folder:
                     in_year_folder.add(photo.url)
                     folders.add_photo(_year_folder(photo), photo)
         for photo in self.loose.photos:
             folders.add_photo(_year_folder(photo), photo)
+
+        if self.root_comments:
+            folders.files[f"{ROOT}/{self.root_comments_name}"] = json.dumps(
+                {"sharedAlbumComments": self.root_comments}, ensure_ascii=False
+            ).encode()
 
         export_dir.mkdir(parents=True, exist_ok=True)
         members = list(folders.files.items())
@@ -138,21 +219,30 @@ class _ExportFiles:
         self._edited_suffix = edited_suffix
         self._name_count: Counter[tuple[str, str]] = Counter()
 
-    def add_album(self, folder: str, title: str) -> None:
+    def add_album(self, folder: str, album: SyntheticAlbum) -> None:
         """Add the métadonnées.json of an Album folder."""
+        metadata: dict = {"title": album.title}
+        if album.description:
+            metadata["description"] = album.description
+        if album.album_shared:
+            metadata["sharedAlbumComments"] = album.album_shared
         self.files[f"{folder}/{ALBUM_METADATA}"] = json.dumps(
-            {"title": title}, ensure_ascii=False
+            metadata, ensure_ascii=False
         ).encode()
 
     def add_photo(
-        self, folder: str, photo: SyntheticPhoto, with_media: bool = True
+        self,
+        folder: str,
+        photo: SyntheticPhoto,
+        with_media: bool = True,
+        shared: list[dict] | None = None,
     ) -> None:
         """Add the sidecar of a photo to folder and, with_media, its files."""
         repeat = self._name_count[folder, photo.name]
         self._name_count[folder, photo.name] += 1
         index = f"({repeat})" if repeat else ""
         self.files[f"{folder}/{photo.name}{SIDECAR_STEM}{index}.json"] = json.dumps(
-            photo.sidecar(), ensure_ascii=False
+            photo.sidecar(shared), ensure_ascii=False
         ).encode()
         if not (with_media and photo.has_file):
             return
@@ -164,6 +254,10 @@ class _ExportFiles:
         if photo.motion:
             self.files[f"{folder}/{stem}"] = _jpeg_bytes(f"{photo.url}-video")
             self.files[f"{folder}/{stem}~2"] = _jpeg_bytes(f"{photo.url}-video-2")
+
+
+def _time(when: datetime) -> dict:
+    return {"timestamp": str(int(when.timestamp())), "formatted": ""}
 
 
 def _year_folder(photo: SyntheticPhoto) -> str:

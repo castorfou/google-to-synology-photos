@@ -168,6 +168,25 @@ def test_description_is_read_back_exactly(nas: Nas, kind: str) -> None:
     assert nas.client.description(item_id) == TEXT
 
 
+def test_a_long_description_is_read_back_exactly(nas: Nas) -> None:
+    # Longer than the longest Photo Description of the real export.
+    text = "\n".join([TEXT] * 100)
+    item_id = nas.client.upload(nas.path("long.jpg"), nas.media.photo)
+
+    nas.client.set_description(item_id, text)
+
+    assert nas.client.description(item_id) == text
+
+
+def test_an_empty_description_clears_the_item(nas: Nas) -> None:
+    item_id = nas.client.upload(nas.path("cleared.jpg"), nas.media.photo)
+    nas.client.set_description(item_id, TEXT)
+
+    nas.client.set_description(item_id, "")
+
+    assert nas.client.description(item_id) == ""
+
+
 def test_writes_on_unknown_items_answer_success_and_do_nothing(nas: Nas) -> None:
     nas.client.set_description(UNKNOWN_ID, TEXT)
     nas.client.delete_item(UNKNOWN_ID)
