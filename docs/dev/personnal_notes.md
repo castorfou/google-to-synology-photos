@@ -112,3 +112,9 @@ Tu es dans la boucle « un `/implement` par ticket » du flux principal. #29 et 
 Une autre option est `/implement-spec #28`, qui enchaîne tous les tickets restants en parallèle sur une branche d'intégration. Je ne la conseille pas ici : le contrat contre le DS923 n'accepte pas plusieurs runs en même temps, et ta validation PR par PR serait perdue.
 
 On lance `/retro`, ou directement #32 ?
+
+# Oct,31 26
+
+La PR #42 est fusionnée sur GitHub (commit `5161ec4`), avec ton commit de notes et une CI verte sur son dernier commit. La branche est supprimée et ton `main` local est à jour.
+
+La suite recommandée est `/clear`, puis `/mattpocock-skills:implement #32`.
