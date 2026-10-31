@@ -40,7 +40,7 @@ class SynologyPhotos(Protocol):
         ...
 
     def folder_items(self, folder: str) -> dict[str, int]:
-        """Return the id of each item of a NAS folder, by path.
+        """Return the id of each item of a NAS folder and its subfolders, by path.
 
         A folder that does not exist has no items.
         """

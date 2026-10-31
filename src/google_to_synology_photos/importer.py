@@ -13,10 +13,10 @@ from pathlib import Path
 
 from google_to_synology_photos.description import comment_line, photo_descriptions
 from google_to_synology_photos.media import ConversionFailedError, MediaPreparer
-from google_to_synology_photos.paths import identity_of_path, nas_path, year_folder
+from google_to_synology_photos.paths import LIBRARY_ROOT, identity_of_path, nas_path
 from google_to_synology_photos.report import Report
 from google_to_synology_photos.synology import NasAlbum, SynologyPhotos
-from google_to_synology_photos.takeout import Album, Export, read_export
+from google_to_synology_photos.takeout import Album, read_export
 
 
 # Told the step, the number of the thing it starts, and how many there are.
@@ -27,23 +27,27 @@ Progress = Callable[[str, int, int], None]
 class Snapshot:
     """The NAS Library when the run starts.
 
-    items holds the path and id of each item of the year folders of the export,
-    by identity; albums holds the items of every Album.
+    items holds the path and id of each item of the NAS Library, by identity;
+    albums holds the items of every Album made only of NAS Library photos: the
+    others are the Household's own.
     """
 
     items: dict[str, tuple[str, int]]
     albums: dict[NasAlbum, set[int]]
 
 
-def take_snapshot(export: Export, nas: SynologyPhotos) -> Snapshot:
-    """Read what the NAS Library holds of export."""
-    items = {
-        identity_of_path(path): (path, item_id)
-        for folder in sorted({year_folder(p) for p in export.photos.values()})
-        for path, item_id in nas.folder_items(folder).items()
-    }
-    albums = {album: set(nas.album_items(album.id)) for album in nas.albums()}
-    return Snapshot(items, albums)
+def take_snapshot(nas: SynologyPhotos) -> Snapshot:
+    """Read what the NAS holds of the NAS Library."""
+    listing = nas.folder_items(LIBRARY_ROOT)
+    library = set(listing.values())
+    return Snapshot(
+        {identity_of_path(path): (path, id_) for path, id_ in listing.items()},
+        {
+            album: held
+            for album in nas.albums()
+            if (held := set(nas.album_items(album.id))) <= library
+        },
+    )
 
 
 def pair_albums(
@@ -92,8 +96,8 @@ def run_import(
 ) -> Report:
     """Build the NAS Library from the Takeout Export in export_dir.
 
-    Uploads the photos the NAS lacks, creates or grows the Albums, sets the Photo
-    Descriptions that differ, and returns the report of the run.
+    Uploads the photos the NAS lacks, creates, renames or grows the Albums, sets
+    the Photo Descriptions that differ, and returns the report of the run.
     """
     report = Report()
     export = read_export(export_dir)
@@ -110,7 +114,7 @@ def run_import(
     item_ids: dict[str, int] = {}
     paths: dict[str, str] = {}
     with MediaPreparer() as media:
-        snapshot = take_snapshot(export, nas)
+        snapshot = take_snapshot(nas)
         for number, (url, photo) in enumerate(export.photos.items(), start=1):
             progress("Photos and videos", number, len(export.photos))
             known = snapshot.items.get(identity_of_path(nas_path(photo)))
@@ -150,6 +154,12 @@ def run_import(
             report.albums_created += 1
         else:
             album_id, held = nas_album.id, snapshot.albums[nas_album]
+            if nas_album.name != album.title:
+                nas.rename_album(album_id, album.title)
+                if NasAlbum(album_id, album.title) in nas.albums():
+                    report.albums_renamed += 1
+                else:
+                    report.failed_writes.append(f"Name of Album {album.title!r}")
         missing = [item for item in items if item not in held]
         if missing:
             nas.add_to_album(album_id, missing)
@@ -161,11 +171,15 @@ def run_import(
         progress("Photo Descriptions", number, len(item_ids))
         description = descriptions[url]
         # An empty text still clears what is there: the Album text can move away.
-        if nas.description(item_id) == description.text:
+        current = nas.description(item_id)
+        if current == description.text:
             continue
         nas.set_description(item_id, description.text)
         if nas.description(item_id) == description.text:
-            report.descriptions_written += 1
+            if current:
+                report.descriptions_rewritten += 1
+            else:
+                report.descriptions_written += 1
             report.comments_written += description.comments
             report.likes_written += description.likes
         else:

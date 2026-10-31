@@ -19,6 +19,7 @@ Parameters are sent as a form POST. Values of the `SYNO.Foto.*` calls are JSON-e
 |---|---|---|
 | Login | `SYNO.API.Auth login` v6, `session=webui`, `enable_syno_token=yes`, `enable_device_token=yes` | `session=SynologyPhotos` is refused with 402 for a non-admin user. The `synotoken` goes in the `X-SYNO-TOKEN` header. |
 | Folder by path | `SYNO.Foto.Browse.Folder get` v2, `name="/Google Photos/2013"` | No `name`: the root of the Personal Space. Error 642: no such folder. |
+| Subfolders | `SYNO.Foto.Browse.Folder list` v2, `id`, `offset`, `limit` | Each has its full path as `name`, such as `/Google Photos/2013`. |
 | Create a folder | `SYNO.Foto.Browse.Folder create` v1, `target_id`, `name` | One level at a time. Error 641: it exists. |
 | Items of a folder | `SYNO.Foto.Browse.Item list` v2, `folder_id`, `offset`, `limit` | Items have `id`, `filename`, `filesize`, `type` (`photo`, `video`). |
 | Upload | `SYNO.Foto.Upload.Item upload_to_folder` v1, multipart, `target_folder_id`, `name`, `duplicate`, `mtime` | Returns the item `id` at once, and `action` (`new`, `ignore`, `rename`). |
@@ -42,7 +43,8 @@ Parameters are sent as a form POST. Values of the `SYNO.Foto.*` calls are JSON-e
 - **Photo Description.** Accents, emoji and line breaks are kept exactly, also in texts several thousand characters long. An empty text clears the description. A description written just after the upload is sometimes dropped while the call still answers success; written again a little later, it sticks. The client reads each description back and writes it again after 1, 2, 4 and 8 seconds until it sticks. A description that still has not stuck is left to the import's read-back, which lists it in the report.
 - **Unknown items.** `Browse.Item set` and `Browse.Item delete` answer success on an unknown id and do nothing. `NormalAlbum add_item` skips unknown items silently.
 - **Unknown Albums.** `NormalAlbum add_item` and `Album set_name` fail with error 609.
-- **Album names** are not unique: creating an Album with a taken name gives a second Album.
+- **Album names** are not unique: creating an Album with a taken name gives a second Album. Names are stored exactly as sent, spaces and `/` included.
+- **Item ids.** An item has the same id in its folder and in its Albums.
 - **Device token.** The login returns a device token (`did`), even without 2FA. Given back as `device_id`, it spares the 2FA code. A login without the password fails (error 400) even with a device token.
 - **Login errors.** 400: wrong user name or password. 403: a 2FA code is needed (`otp_code`). 404: wrong 2FA code.
 - **Certificate.** DSM serves a self-signed certificate on its LAN address. The client pins it (see [Architecture](architecture.md#login)). When DSM renews it, the pinned certificate no longer matches: `g2s` stops and asks to run `g2s login`, which shows the new fingerprint.
