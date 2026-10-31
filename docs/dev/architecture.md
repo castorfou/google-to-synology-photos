@@ -13,7 +13,7 @@ All code lives in `src/google_to_synology_photos/`.
 | `dsm.py` | Transport to the DSM Web API: login, calls, multipart uploads, TLS. |
 | `synology_client.py` | The real Synology Photos client, over the `SYNO.Foto.*` Web API. |
 | `importer.py` | The import use case, `run_import(export_dir, nas) -> Report`. The only entry the CLI calls, and the test seam. |
-| `takeout.py` | Takeout reader. Reads every ZIP of the export in place and returns the photos by `url` and the Albums. |
+| `takeout.py` | Takeout reader. Reads every ZIP of the export in place, picks the file of each photo, and returns the photos by `url` and the Albums. Refuses an export of selected Albums. |
 | `paths.py` | NAS path rule. |
 | `description.py` | Photo Description builder. Pure. |
 | `synology.py` | `SynologyPhotos`, the interface of the Synology Photos client, and `SynologyError`. |
@@ -21,12 +21,30 @@ All code lives in `src/google_to_synology_photos/`.
 
 ## Reading a Takeout Export
 
-- Album folders are the folders holding a `métadonnées.json` (or `metadata.json`); its `title` is the Album title.
-- Each media file has a sidecar `<file name>.supplemental-metadata.json`. A sidecar whose media file is absent is skipped.
-- A photo is identified by its sidecar `url`. The same photo appears in its Album folders and in its year folder (`Photos de 2013`); it is read once.
+The reader lists every ZIP before it pairs anything: a media file and its sidecar often sit in different ZIPs, and many Album folders hold only sidecars, with the media in other folders.
+
+- Album folders are the folders holding a `métadonnées.json` (or `metadata.json`); its `title` is the Album title. An Album is defined by its sidecars.
+- A photo is identified by its sidecar `url`. The same photo appears in its Album folders and in its year folder (`Photos de 2013`); it is read once, uploaded once, and added to each Album.
+- A sidecar is named `<name>.supplemental-metadata.json`. When a name repeats in a folder, Google adds an index: `<name>.supplemental-metadata(1).json` goes with `IMG(1).JPG`. The index can differ from one folder to another, so a sidecar is only paired inside its own folder. Its `title` keeps the plain name.
 - Only photos that belong to at least one Album are imported.
 - The date taken is the sidecar `photoTakenTime.timestamp`, in UTC. The Caption is the sidecar `description`.
 - Google writes a non-breaking space in `Google Photos` and in `Photos de <year>`.
+
+### Which file is imported
+
+- **Edited photo:** an edited file has no sidecar of its own. It sits next to its original, as `IMG-modifié.JPG` (`IMG-edited.JPG` in English), or `IMG-modifié(1).JPG` for a repeated name. When any folder holds it for a `url`, it is imported instead of the original, under the sidecar `title`, so the NAS path is the same as for an unedited photo.
+- **Motion Photo:** only `IMG.MP.jpg` has a sidecar. The `IMG.MP` and `IMG.MP~2` video parts have none, so they are never imported.
+- Media files with no sidecar are not imported.
+
+### Files missing from the export
+
+Two different photos can share a name and a year folder while the export holds only one file for them: `IMG.JPG` belongs to the first sidecar, and `IMG(1).JPG` does not exist. The second photo has no file anywhere. It is not paired with `IMG.JPG`, which is another photo, and the report lists it under *Album photos with no file in the export*, as `<Album title>: <name>`.
+
+### Export of selected Albums
+
+An export of selected Albums has no year folders, and it brings the sidecars of some photos without their media. When no folder of sidecars sits outside the Albums and at least one Album photo has no file, `read_export` raises `SelectedAlbumsExportError`. The run stops before any write, and the CLI prints the titles of those Albums and asks for a full Takeout Export.
+
+A full export always has year folders, so a few missing files never stop it, even when they are all the photos of a small Album. A ZIP left out of the folder is not refused: its photos show in the report as photos with no file.
 
 ## NAS path rule
 
@@ -78,7 +96,7 @@ The real client, its API calls and the behaviour measured on the DS923 are descr
 
 Tests run the import use case, or the `g2s` CLI, on synthetic data only:
 
-- `tests/takeout_builder.py` builds a synthetic Takeout Export ZIP with French names: Album folders with `métadonnées.json`, year folders, sidecars.
+- `tests/takeout_builder.py` builds a synthetic Takeout Export with French names, in one or several ZIPs: Album folders with `métadonnées.json`, Album folders of sidecars only, year folders, sidecars, repeated names with their `(1)` index, `-modifié` files, Motion Photos, and photos with no file.
 - `tests/fake_synology.py` is an in-memory fake Synology Photos, true to the behaviour measured on the DS923. Setting `descriptions_stick = False` makes description writes silently not stick.
 - `tests/test_contract.py` is the contract of the client. It runs against the fake always, and against the DS923 with `G2S_CONTRACT=1` (see [Synology Photos API](synology-photos-api.md)).
 - `tests/test_login.py` runs the login with an in-memory keyring and a fake NAS.

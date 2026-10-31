@@ -3,6 +3,7 @@
 import io
 import json
 import zipfile
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,7 +11,7 @@ from pathlib import Path
 
 # Google writes a non-breaking space in these folder names.
 ROOT = "Takeout/Google\xa0Photos"
-SIDECAR_SUFFIX = ".supplemental-metadata.json"
+SIDECAR_STEM = ".supplemental-metadata"
 ALBUM_METADATA = "métadonnées.json"
 
 
@@ -21,6 +22,12 @@ class SyntheticPhoto:
     taken: datetime
     caption: str = ""
     data: bytes = b""
+    # Bytes of the `-modifié` file next to the original, for an edited photo.
+    edited: bytes | None = None
+    # A Motion Photo also comes with its video parts, which have no sidecar.
+    motion: bool = False
+    # False when the export holds the sidecars of the photo, but never its file.
+    has_file: bool = True
 
     def sidecar(self) -> dict:
         ts = str(int(self.taken.timestamp()))
@@ -40,19 +47,22 @@ class SyntheticPhoto:
 class SyntheticAlbum:
     title: str
     photos: list[SyntheticPhoto] = field(default_factory=list)
+    # True when the folder holds only sidecars: the media sit in year folders.
+    sidecars_only: bool = False
 
 
 class TakeoutBuilder:
-    """Collects Albums and photos, then writes them as one Takeout ZIP."""
+    """Collects Albums and photos, then writes them as Takeout ZIPs."""
 
-    def __init__(self) -> None:
+    def __init__(self, edited_suffix: str = "-modifié") -> None:
         self.albums: list[SyntheticAlbum] = []
         # Photos in no Album: they sit only in their year folder.
         self.loose = SyntheticAlbum("")
+        self.edited_suffix = edited_suffix
 
-    def album(self, title: str) -> SyntheticAlbum:
+    def album(self, title: str, sidecars_only: bool = False) -> SyntheticAlbum:
         """Add an Album folder with its métadonnées.json."""
-        album = SyntheticAlbum(title)
+        album = SyntheticAlbum(title, sidecars_only=sidecars_only)
         self.albums.append(album)
         return album
 
@@ -63,46 +73,101 @@ class TakeoutBuilder:
         url: str,
         taken: datetime = datetime(2013, 4, 13, 15, 0, 44, tzinfo=UTC),
         caption: str = "",
+        edited: bool = False,
+        motion: bool = False,
+        has_file: bool = True,
     ) -> SyntheticPhoto:
         """Add a photo to an Album; it also sits in its year folder."""
-        photo = SyntheticPhoto(name, url, taken, caption, data=_jpeg_bytes(url))
+        photo = SyntheticPhoto(
+            name,
+            url,
+            taken,
+            caption,
+            data=_jpeg_bytes(url),
+            edited=_jpeg_bytes(f"{url}-edited") if edited else None,
+            motion=motion,
+            has_file=has_file,
+        )
         album.photos.append(photo)
         return photo
+
+    def add_to_album(self, album: SyntheticAlbum, photo: SyntheticPhoto) -> None:
+        """Put a photo that already exists in one more Album."""
+        album.photos.append(photo)
 
     def loose_photo(self, name: str, url: str) -> SyntheticPhoto:
         """Add a photo that belongs to no Album."""
         return self.photo(self.loose, name, url)
 
-    def write(self, export_dir: Path) -> Path:
-        """Write the export as one ZIP in export_dir; return export_dir."""
+    def write(self, export_dir: Path, zips: int = 1, year_folders: bool = True) -> Path:
+        """Write the export as ZIPs in export_dir; return export_dir.
+
+        With several ZIPs, members are dealt out in turn, so a media file and
+        its sidecar sit in different ZIPs. An export of selected Albums has no
+        year folders.
+        """
+        folders = _ExportFiles(self.edited_suffix)
+        in_year_folder: set[str] = set()
+        for album in self.albums:
+            folder = f"{ROOT}/{album.title}"
+            folders.add_album(folder, album.title)
+            for photo in album.photos:
+                # An Album photo also sits in its year folder.
+                folders.add_photo(folder, photo, with_media=not album.sidecars_only)
+                if year_folders and photo.url not in in_year_folder:
+                    in_year_folder.add(photo.url)
+                    folders.add_photo(_year_folder(photo), photo)
+        for photo in self.loose.photos:
+            folders.add_photo(_year_folder(photo), photo)
+
         export_dir.mkdir(parents=True, exist_ok=True)
-        zip_path = export_dir / "takeout-20240101T000000Z-1-001.zip"
-        with zipfile.ZipFile(zip_path, "w") as zf:
-            for album in self.albums:
-                folder = f"{ROOT}/{album.title}"
-                zf.writestr(
-                    f"{folder}/{ALBUM_METADATA}",
-                    json.dumps({"title": album.title}, ensure_ascii=False),
-                )
-                for photo in album.photos:
-                    # An Album photo also sits in its year folder.
-                    _write_photo(zf, folder, photo)
-                    _write_photo(zf, _year_folder(photo), photo)
-            for photo in self.loose.photos:
-                _write_photo(zf, _year_folder(photo), photo)
+        members = list(folders.files.items())
+        for part in range(zips):
+            zip_path = export_dir / f"takeout-20240101T000000Z-1-{part + 1:03}.zip"
+            with zipfile.ZipFile(zip_path, "w") as zf:
+                for member, data in members[part::zips]:
+                    zf.writestr(member, data)
         return export_dir
+
+
+class _ExportFiles:
+    """The members of an export, with Google's `(1)` on repeated names."""
+
+    def __init__(self, edited_suffix: str) -> None:
+        self.files: dict[str, bytes] = {}
+        self._edited_suffix = edited_suffix
+        self._name_count: Counter[tuple[str, str]] = Counter()
+
+    def add_album(self, folder: str, title: str) -> None:
+        """Add the métadonnées.json of an Album folder."""
+        self.files[f"{folder}/{ALBUM_METADATA}"] = json.dumps(
+            {"title": title}, ensure_ascii=False
+        ).encode()
+
+    def add_photo(
+        self, folder: str, photo: SyntheticPhoto, with_media: bool = True
+    ) -> None:
+        """Add the sidecar of a photo to folder and, with_media, its files."""
+        repeat = self._name_count[folder, photo.name]
+        self._name_count[folder, photo.name] += 1
+        index = f"({repeat})" if repeat else ""
+        self.files[f"{folder}/{photo.name}{SIDECAR_STEM}{index}.json"] = json.dumps(
+            photo.sidecar(), ensure_ascii=False
+        ).encode()
+        if not (with_media and photo.has_file):
+            return
+        stem, dot, ext = photo.name.rpartition(".")
+        self.files[f"{folder}/{stem}{index}{dot}{ext}"] = photo.data
+        if photo.edited is not None:
+            edited = f"{folder}/{stem}{self._edited_suffix}{index}{dot}{ext}"
+            self.files[edited] = photo.edited
+        if photo.motion:
+            self.files[f"{folder}/{stem}"] = _jpeg_bytes(f"{photo.url}-video")
+            self.files[f"{folder}/{stem}~2"] = _jpeg_bytes(f"{photo.url}-video-2")
 
 
 def _year_folder(photo: SyntheticPhoto) -> str:
     return f"{ROOT}/Photos de\xa0{photo.taken.year}"
-
-
-def _write_photo(zf: zipfile.ZipFile, folder: str, photo: SyntheticPhoto) -> None:
-    zf.writestr(f"{folder}/{photo.name}", photo.data)
-    zf.writestr(
-        f"{folder}/{photo.name}{SIDECAR_SUFFIX}",
-        json.dumps(photo.sidecar(), ensure_ascii=False),
-    )
 
 
 def _jpeg_bytes(seed: str) -> bytes:

@@ -8,12 +8,13 @@ from dataclasses import dataclass, field
 
 @dataclass
 class Report:
-    """What a run did, and the writes that did not stick."""
+    """What a run did, the writes that did not stick, the files Google left out."""
 
     uploaded: int = 0
     albums_created: int = 0
     descriptions_written: int = 0
     failed_writes: list[str] = field(default_factory=list)
+    no_file: list[str] = field(default_factory=list)
 
     def render(self) -> str:
         """Return the report as Markdown."""
@@ -28,4 +29,6 @@ class Report:
             "",
         ]
         lines += [f"- {w}" for w in self.failed_writes] or ["None."]
+        lines += ["", "## Album photos with no file in the export", ""]
+        lines += [f"- {n}" for n in self.no_file] or ["None."]
         return "\n".join(lines) + "\n"
