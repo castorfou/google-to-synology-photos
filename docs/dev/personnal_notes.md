@@ -89,3 +89,26 @@ Next steps
 
 
 Pour démarrer : /clear, puis /fix-issue 29 pour le tracer bullet. Une fois qu'il est fusionné, les tickets 30 à 33 peuvent se faire en parallèle.
+
+
+Tu es dans la boucle « un `/implement` par ticket » du flux principal. #29 et #30 sont faits, il reste 8 tickets plus la spec #28. Voici leurs dépendances sur GitHub :
+
+```text
+#31 Comments & Likes ──────────────┬──► #36 Refresh Albums/texte ──┬──► #37 Refresh edits/vidéos/dates ──┐
+#32 Full Takeout Export ──► #35 Idempotent/reprise ──┘              │                                     ├──► #39 Docs
+#33 Dates/GPS ──► #34 Vidéos MP4 ───────────────────────────────────┘                                     │
+                                          #31 + #36 ──► #38 Album Downloads ─────────────────────────────┘
+```
+
+**Trois tickets sont prêts tout de suite : #31, #32 et #33.**
+
+**Je recommande #32 (Full Takeout Export shape) en premier.** C'est le début de la plus longue chaîne : #32 → #35 → #36 → #37 → #39. #35 corrigera aussi une limite connue, le compteur d'uploads qui compte les fichiers déjà présents. Ensuite #33 puis #34, qui mènent à #37 par l'autre branche. #31 peut passer n'importe quand avant #36.
+
+**Pour le déroulé :**
+1. **`/retro` maintenant (optionnel)**, avant d'effacer le contexte. Le #30 a eu plusieurs surprises sur l'API du NAS, par exemple l'overwrite impossible et les descriptions ignorées. On pourrait en tirer des règles pour l'environnement de travail.
+2. **`/clear`**, puis **`/mattpocock-skills:implement #32`**. Chaque ticket repart d'un contexte vide : tout ce qu'il faut est dans le ticket et dans `docs/dev/`.
+3. Même cycle pour la suite, toujours avec PR et fusion sur GitHub.
+
+Une autre option est `/implement-spec #28`, qui enchaîne tous les tickets restants en parallèle sur une branche d'intégration. Je ne la conseille pas ici : le contrat contre le DS923 n'accepte pas plusieurs runs en même temps, et ta validation PR par PR serait perdue.
+
+On lance `/retro`, ou directement #32 ?

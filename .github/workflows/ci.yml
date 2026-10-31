@@ -54,7 +54,7 @@ jobs:
     - name: 🔧 Type check with mypy
       run: |
         if [ -d src/ ]; then
-          uv run mypy src/ || echo "⚠️ MyPy found issues (expected for new projects)"
+          uv run mypy
         else
           echo "No src/ directory found"
         fi
@@ -87,8 +87,10 @@ jobs:
       run: uv sync --extra dev
 
     - name: 🪝 Run pre-commit hooks
+      env:
+        SKIP: no-venv-at-root   # uv sync creates .venv here; the hook guards the devcontainer
       run: |
-        uv run pre-commit run --all-files --show-diff-on-failure || echo "⚠️ Pre-commit hooks found issues"
+        uv run pre-commit run --all-files --show-diff-on-failure
 
   build:
     name: 🏗️ Build package
