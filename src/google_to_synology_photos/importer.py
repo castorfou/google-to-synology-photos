@@ -7,7 +7,7 @@ read back, and a write that did not stick goes to the report.
 from pathlib import Path
 
 from google_to_synology_photos.description import comment_line, photo_descriptions
-from google_to_synology_photos.media import MediaPreparer, MetadataError
+from google_to_synology_photos.media import MediaPreparer
 from google_to_synology_photos.paths import nas_path
 from google_to_synology_photos.report import Report
 from google_to_synology_photos.synology import SynologyPhotos
@@ -36,13 +36,10 @@ def run_import(export_dir: Path, nas: SynologyPhotos) -> Report:
     with MediaPreparer() as media:
         for url, photo in export.photos.items():
             path = nas_path(photo)
-            try:
-                data = media.prepare(photo)
-            except MetadataError:
-                # Better a photo at the wrong date than no photo.
+            prepared = media.prepare(photo)
+            if not prepared.complete:
                 report.metadata_not_written.append(path)
-                data = photo.read()
-            item_id = nas.upload(path, data)
+            item_id = nas.upload(path, prepared.data)
             if nas.item_at(path) != item_id:
                 report.failed_writes.append(f"Upload of {path}")
                 continue

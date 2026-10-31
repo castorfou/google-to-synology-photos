@@ -15,7 +15,7 @@ from PIL import ExifTags, Image
 from google_to_synology_photos.cli import main
 from google_to_synology_photos.importer import run_import
 from tests.fake_synology import FakeSynologyPhotos
-from tests.takeout_builder import TakeoutBuilder, _jpeg_bytes
+from tests.takeout_builder import TakeoutBuilder, jpeg_bytes
 
 
 URL = "https://photos.google.com/photo/AF1QipSyntheticPhotoUrl0001"
@@ -29,9 +29,14 @@ def date_taken(data: bytes) -> str | None:
     return exif.get(ExifTags.Base.DateTimeOriginal)
 
 
+def _gps(data: bytes) -> dict:
+    """The GPS tags of a file."""
+    return Image.open(io.BytesIO(data)).getexif().get_ifd(ExifTags.IFD.GPSInfo)
+
+
 def position(data: bytes) -> tuple[float, float] | None:
     """The signed (latitude, longitude) of a file, or None."""
-    gps = Image.open(io.BytesIO(data)).getexif().get_ifd(ExifTags.IFD.GPSInfo)
+    gps = _gps(data)
     if ExifTags.GPS.GPSLatitude not in gps:
         return None
     return (
@@ -42,7 +47,7 @@ def position(data: bytes) -> tuple[float, float] | None:
 
 def altitude(data: bytes) -> float | None:
     """The signed altitude of a file, or None."""
-    gps = Image.open(io.BytesIO(data)).getexif().get_ifd(ExifTags.IFD.GPSInfo)
+    gps = _gps(data)
     if ExifTags.GPS.GPSAltitude not in gps:
         return None
     below_sea_level = gps[ExifTags.GPS.GPSAltitudeRef] in (1, b"\x01")
@@ -50,6 +55,7 @@ def altitude(data: bytes) -> float | None:
 
 
 def _angle(parts: tuple, ref: str) -> float:
+    """The signed angle of EXIF degrees, minutes, seconds and their reference."""
     degrees, minutes, seconds = (float(part) for part in parts)
     sign = -1 if ref in ("S", "W") else 1
     return sign * (degrees + minutes / 60 + seconds / 3600)
@@ -65,18 +71,10 @@ def sent_file(tmp_path: Path, **photo: Any) -> bytes:
     return nas.item(PHOTO_PATH).data
 
 
-def test_a_jpg_with_no_date_arrives_with_the_date_taken_from_google(
+def test_a_jpg_with_no_date_arrives_with_the_date_taken_from_google_photos(
     tmp_path: Path,
 ) -> None:
-    takeout = TakeoutBuilder()
-    album = takeout.album("Été")
-    takeout.photo(album, "IMG-20160809-WA0001.jpg", URL, taken=TAKEN, exif_date=None)
-    export = takeout.write(tmp_path / "export")
-    nas = FakeSynologyPhotos()
-
-    run_import(export, nas)
-
-    assert date_taken(nas.item(PHOTO_PATH).data) == "2016:08:09 14:30:05"
+    assert date_taken(sent_file(tmp_path, exif_date=None)) == "2016:08:09 14:30:05"
 
 
 def test_a_date_in_the_file_is_kept_and_the_file_is_sent_as_it_is(
@@ -99,7 +97,7 @@ def test_a_date_in_the_file_is_kept_and_the_file_is_sent_as_it_is(
     assert date_taken(photo.data) == "2001:02:03 04:05:06"
 
 
-def test_a_position_from_google_is_written_when_the_file_has_none(
+def test_a_position_from_google_photos_is_written_when_the_file_has_none(
     tmp_path: Path,
 ) -> None:
     data = sent_file(tmp_path, geo=(48.8584, 2.2945, 35.0))
@@ -121,7 +119,7 @@ def test_a_position_at_sea_level_has_no_altitude(tmp_path: Path) -> None:
     assert altitude(sent_file(tmp_path, geo=(43.3, 5.4, 0.0))) is None
 
 
-def test_zeros_in_google_mean_no_position(tmp_path: Path) -> None:
+def test_zeros_in_google_photos_mean_no_position(tmp_path: Path) -> None:
     data = sent_file(tmp_path, exif_date=None, geo=(0.0, 0.0, 0.0))
 
     assert position(data) is None
@@ -156,12 +154,38 @@ def test_an_empty_date_in_the_file_counts_as_no_date(
     assert date_taken(sent_file(tmp_path, exif_date=no_date)) == "2016:08:09 14:30:05"
 
 
+def test_an_empty_xmp_date_does_not_hide_a_date_in_the_exif(tmp_path: Path) -> None:
+    takeout = TakeoutBuilder()
+    photo = takeout.photo(takeout.album("Été"), "IMG.jpg", URL, taken=TAKEN)
+    photo.data = jpeg_bytes(URL, "2001:02:03 04:05:06", xmp_date="0000:00:00 00:00:00")
+    nas = FakeSynologyPhotos()
+
+    run_import(takeout.write(tmp_path / "export"), nas)
+
+    assert nas.item("Photos/Google Photos/2016/IMG__yxk3qp.jpg").data == photo.data
+
+
+def test_a_date_only_in_the_xmp_is_kept_and_the_exif_date_is_written(
+    tmp_path: Path,
+) -> None:
+    takeout = TakeoutBuilder()
+    photo = takeout.photo(takeout.album("Été"), "IMG.jpg", URL, taken=TAKEN)
+    photo.data = jpeg_bytes(URL, date=None, xmp_date="2001-02-03T04:05:06")
+    nas = FakeSynologyPhotos()
+
+    run_import(takeout.write(tmp_path / "export"), nas)
+
+    sent = nas.item("Photos/Google Photos/2016/IMG__yxk3qp.jpg").data
+    assert date_taken(sent) == "2016:08:09 14:30:05"
+    assert b"2001-02-03T04:05:06" in sent
+
+
 def test_writing_the_date_leaves_the_image_and_the_rest_of_the_file_as_they_are(
     tmp_path: Path,
 ) -> None:
     data = sent_file(tmp_path, exif_date=None)
 
-    source = _jpeg_bytes(URL, date=None)
+    source = jpeg_bytes(URL, date=None)
     assert source[source.index(b"\xff\xda") :] == data[data.index(b"\xff\xda") :]
     assert URL.encode() in data
 
@@ -172,7 +196,7 @@ def test_no_text_is_written_into_the_file(tmp_path: Path) -> None:
     assert b"baignade" not in data
 
 
-def test_a_png_with_no_date_arrives_with_the_date_taken_from_google(
+def test_a_png_with_no_date_arrives_with_the_date_taken_from_google_photos(
     tmp_path: Path,
 ) -> None:
     takeout = TakeoutBuilder()
@@ -189,7 +213,7 @@ def test_a_png_with_no_date_arrives_with_the_date_taken_from_google(
     assert date_taken(sent) == "2016:08:09 14:30:05"
 
 
-def test_a_jpeg_named_png_arrives_with_the_date_taken_from_google(
+def test_a_jpeg_named_png_arrives_with_the_date_taken_from_google_photos(
     tmp_path: Path,
 ) -> None:
     takeout = TakeoutBuilder()
@@ -234,7 +258,7 @@ def test_a_file_that_cannot_be_written_is_sent_as_it_is_and_reported(
     assert report.failed_writes == []
 
 
-def test_the_year_folder_comes_from_google_and_not_from_the_file(
+def test_the_year_folder_comes_from_google_photos_and_not_from_the_file(
     tmp_path: Path,
 ) -> None:
     takeout = TakeoutBuilder()

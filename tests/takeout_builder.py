@@ -16,6 +16,12 @@ ROOT = "Takeout/Google\xa0Photos"
 SIDECAR_STEM = ".supplemental-metadata"
 ALBUM_METADATA = "métadonnées.json"
 ROOT_COMMENTS = "commentaires_albums_partagés.json"
+XMP_PACKET = (
+    '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF '
+    'xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description '
+    'xmlns:exif="http://ns.adobe.com/exif/1.0/" exif:DateTimeOriginal="{date}"/>'
+    "</rdf:RDF></x:xmpmeta>"
+)
 # The date a camera writes in a file, unlike a WhatsApp image, which has none.
 CAMERA_DATE = "2013:04:13 17:00:44"
 
@@ -118,8 +124,8 @@ class TakeoutBuilder:
             url,
             taken,
             caption,
-            data=_jpeg_bytes(url, exif_date, exif_position),
-            edited=_jpeg_bytes(f"{url}-edited", exif_date) if edited else None,
+            data=jpeg_bytes(url, exif_date, exif_position),
+            edited=jpeg_bytes(f"{url}-edited", exif_date) if edited else None,
             motion=motion,
             has_file=has_file,
             geo=geo,
@@ -272,8 +278,8 @@ class _ExportFiles:
             edited = f"{folder}/{stem}{self._edited_suffix}{index}{dot}{ext}"
             self.files[edited] = photo.edited
         if photo.motion:
-            self.files[f"{folder}/{stem}"] = _jpeg_bytes(f"{photo.url}-video")
-            self.files[f"{folder}/{stem}~2"] = _jpeg_bytes(f"{photo.url}-video-2")
+            self.files[f"{folder}/{stem}"] = jpeg_bytes(f"{photo.url}-video")
+            self.files[f"{folder}/{stem}~2"] = jpeg_bytes(f"{photo.url}-video-2")
 
 
 def _time(when: datetime) -> dict:
@@ -284,10 +290,11 @@ def _year_folder(photo: SyntheticPhoto) -> str:
     return f"{ROOT}/Photos de\xa0{photo.taken.year}"
 
 
-def _jpeg_bytes(
+def jpeg_bytes(
     seed: str,
     date: str | None = CAMERA_DATE,
     position: tuple[float, float] | None = None,
+    xmp_date: str | None = None,
 ) -> bytes:
     """A real 1x1 JPEG, unique per seed, holding only the given metadata."""
     exif = Image.Exif()
@@ -301,8 +308,9 @@ def _jpeg_bytes(
         gps[ExifTags.GPS.GPSLongitudeRef] = "E" if longitude >= 0 else "W"
         gps[ExifTags.GPS.GPSLongitude] = _degrees(longitude)
     buf = io.BytesIO()
+    xmp = XMP_PACKET.format(date=xmp_date).encode() if xmp_date else b""
     Image.new("RGB", (1, 1), "white").save(
-        buf, "JPEG", exif=exif, comment=seed.encode()
+        buf, "JPEG", exif=exif, comment=seed.encode(), xmp=xmp
     )
     return buf.getvalue()
 

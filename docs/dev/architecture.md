@@ -101,7 +101,7 @@ kept as they are
 - `DateTimeOriginal` from the date taken, when the file has none. A date made of zeros or spaces counts as none. The value is in UTC: EXIF has no time zone here, and Synology Photos shows it as it is.
 - `GPSLatitude`, `GPSLongitude` and their references from the position, when the file has no position. `GPSAltitude` and its reference follow when the altitude is not 0.
 
-When a file lacks nothing, its bytes are sent untouched. No text is ever written into a file: Photo Descriptions go through the API. The year folder of the NAS path always comes from `photoTakenTime`, never from the file.
+Only the EXIF group counts: a date or position in XMP stays as it is, and the EXIF one is still written. When a file lacks nothing, its bytes are sent untouched. No text is ever written into a file: Photo Descriptions go through the API. The year folder of the NAS path always comes from `photoTakenTime`, never from the file.
 
 - **Formats.** JPEG and PNG, recognised by their content, because Takeout has JPEGs named `.png`. Videos, GIFs and any other file are sent untouched.
 - **ExifTool.** It rewrites the metadata and leaves the image data as it is. One `exiftool -stay_open` process serves the whole run, through PyExifTool. Without ExifTool, `g2s` stops before any upload and says how to install it.

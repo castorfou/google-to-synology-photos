@@ -7,6 +7,7 @@ on a full Takeout Export.
 """
 
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
 from typing import Self
@@ -19,7 +20,11 @@ from google_to_synology_photos.takeout import Photo, Position
 
 EXIF_DATE = "%Y:%m:%d %H:%M:%S"
 # By content: Takeout has JPEGs named .png.
-FORMATS = {b"\xff\xd8\xff": ".jpg", b"\x89PNG\r\n\x1a\n": ".png"}
+SUFFIX_OF_SIGNATURE = {b"\xff\xd8\xff": ".jpg", b"\x89PNG\r\n\x1a\n": ".png"}
+# Only the EXIF group counts: it is what gets written, and an XMP value, which
+# may be empty, stays as it is next to it.
+DATE_TAG = "EXIF:DateTimeOriginal"
+POSITION_TAG = "EXIF:GPSLatitude"
 
 
 class ExifToolMissingError(Exception):
@@ -33,8 +38,12 @@ class ExifToolMissingError(Exception):
         )
 
 
-class MetadataError(Exception):
-    """ExifTool could not read or write the metadata of a file."""
+@dataclass(frozen=True)
+class PreparedFile:
+    """The bytes to send; complete is False if what they lack could not be written."""
+
+    data: bytes
+    complete: bool = True
 
 
 class MediaPreparer:
@@ -57,36 +66,39 @@ class MediaPreparer:
         self._exiftool.terminate()
         self._folder.cleanup()
 
-    def prepare(self, photo: Photo) -> bytes:
-        """Return the bytes to send for photo.
+    def prepare(self, photo: Photo) -> PreparedFile:
+        """Return the file to send for photo.
 
-        Raises MetadataError when what the file lacks cannot be written.
+        A file ExifTool cannot handle is sent as it is: better a photo at the
+        wrong date than no photo.
         """
         data = photo.read()
-        suffix = next((s for sig, s in FORMATS.items() if data.startswith(sig)), None)
+        suffix = next(
+            (s for sign, s in SUFFIX_OF_SIGNATURE.items() if data.startswith(sign)),
+            None,
+        )
         if suffix is None:
-            return data
+            return PreparedFile(data)
         file = Path(self._folder.name, f"media{suffix}")
         file.write_bytes(data)
         try:
-            writes = self._missing(photo, str(file))
+            writes = self._missing_writes(photo, str(file))
             if not writes:
-                return data
+                return PreparedFile(data)
             # -m: a minor error, as in many old files, does not stop the write.
             self._exiftool.execute("-m", "-overwrite_original", *writes, str(file))
-        except ExifToolExecuteException as error:
-            raise MetadataError(str(error)) from error
-        return file.read_bytes()
+        except ExifToolExecuteException:
+            return PreparedFile(data, complete=False)
+        return PreparedFile(file.read_bytes())
 
-    def _missing(self, photo: Photo, file: str) -> list[str]:
+    def _missing_writes(self, photo: Photo, file: str) -> list[str]:
         """Return the ExifTool arguments that write what file lacks."""
-        tags = self._exiftool.get_tags(file, ["DateTimeOriginal", "GPSLatitude"])[0]
-        held = {tag.rpartition(":")[2]: value for tag, value in tags.items()}
+        held = self._exiftool.get_tags(file, [DATE_TAG, POSITION_TAG])[0]
         writes = []
         # Some cameras fill the date with zeros or spaces when they have none.
-        if not str(held.get("DateTimeOriginal", "")).strip(" :0"):
-            writes.append(f"-EXIF:DateTimeOriginal={photo.taken.strftime(EXIF_DATE)}")
-        if "GPSLatitude" not in held and photo.position is not None:
+        if not str(held.get(DATE_TAG, "")).strip(" :0"):
+            writes.append(f"-{DATE_TAG}={photo.taken.strftime(EXIF_DATE)}")
+        if POSITION_TAG not in held and photo.position is not None:
             writes += _position_writes(photo.position)
         return writes
 
