@@ -13,9 +13,9 @@ All code lives in `src/google_to_synology_photos/`.
 | `dsm.py` | Transport to the DSM Web API: login, calls, multipart uploads, TLS. |
 | `synology_client.py` | The real Synology Photos client, over the `SYNO.Foto.*` Web API. |
 | `importer.py` | The import use case, `run_import(export_dir, nas) -> Report`. The only entry the CLI calls, and the test seam. |
-| `takeout.py` | Takeout reader. Reads every ZIP of the export in place, picks the file of each photo, and returns the photos by `url` and the Albums. Refuses an export of selected Albums. |
+| `takeout.py` | Takeout reader. Reads every ZIP of the export in place, picks the file of each photo, and returns the photos by `url`, the Albums with their Comments and Likes, and the orphan Comments. Refuses an export of selected Albums. |
 | `paths.py` | NAS path rule. |
-| `description.py` | Photo Description builder. Pure. |
+| `description.py` | Photo Description builder. Pure. Holds the layout of the text. |
 | `synology.py` | `SynologyPhotos`, the interface of the Synology Photos client, and `SynologyError`. |
 | `report.py` | Counts and lists collected during a run, rendered as Markdown. |
 
@@ -29,6 +29,49 @@ The reader lists every ZIP before it pairs anything: a media file and its sideca
 - Only photos that belong to at least one Album are imported.
 - The date taken is the sidecar `photoTakenTime.timestamp`, in UTC. The Caption is the sidecar `description`.
 - Google writes a non-breaking space in `Google Photos` and in `Photos de <year>`.
+
+### Comments and Likes
+
+Comments and Likes sit in `sharedAlbumComments` lists. Each entry has `creationTime`, and either `text` or `liked: true`. The lists are not always in date order, so the reader sorts them, oldest first.
+
+- **On a photo:** in its sidecar inside an Album folder, with `contentOwnerName`. Each Album has its own list, and the sidecars of year folders have none, so the reader keeps them per Album.
+- **On an Album:** in its `métadonnées.json`, with `contentOwnerName`. The same file may hold a `description`.
+- **Root file:** `commentaires_albums_partagés.json` (`shared_album_comments.json` in English), at the root of `Google Photos`. Its entries have no `contentOwnerName`. They have a `contentUrl`, the share link of their Album.
+
+Most root entries repeat an entry of a sidecar or of a `métadonnées.json`, with the same text and timestamp. This repetition ties a share link to its Album, since nothing else in the export does. A root entry that repeats nothing is an **orphan Comment**:
+
+- When its share link is tied to an Album, it joins the orphan Comments of that Album.
+- Otherwise it has no known Album.
+
+A root entry with `liked: true` has no name to show, so an orphan one is kept as a Comment whose text is `❤️`.
+
+## Photo Description
+
+`description.py` builds the text. It is made of blocks separated by one blank line:
+
+1. On the oldest photo of an Album, the Album text: its description, then one block with its Comments, its Likes line and its orphan Comments.
+2. The Caption.
+3. The Comments, then the Likes line.
+
+```text
+Chez mamie
+
+Théo, 2016-08-09: Quel beau séjour
+❤️ Zoé
+2017-01-02: A Comment that matches no photo
+
+Le sapin
+
+Zoé, 2016-08-10: Joli !
+Théo, 2016-08-11: Two lines,
+kept as they are
+❤️ Théo, Zoé
+```
+
+- A Comment is `<author>, <YYYY-MM-DD>: <text>`, with the date in UTC. A Comment with no author starts at its date.
+- The Likes line is `❤️ <name>, <name>`.
+- When more than one Album brings Comments or Likes to a photo, each of these blocks starts with a line holding the Album title, and Albums come in folder order. Album texts on one photo follow the same rule.
+- The oldest photo is chosen by date taken, then by `url`, at every run, so the Album text moves when an older photo joins the Album.
 
 ### Which file is imported
 
@@ -64,7 +107,7 @@ The rule is deterministic: the same photo gets the same path in every export.
 1. Read the export.
 2. Upload every photo at its path. An upload to a path that is already taken keeps the file there and returns its id.
 3. Create every Album with its Google title and add its photos.
-4. Set each Photo Description (the Caption).
+4. Set each Photo Description that differs from the text on the NAS. An empty text clears what is there.
 5. Each write is read back right after it is made. A write that does not stick is listed in the report under *Writes that did not stick*.
 6. The CLI prints the report and writes it to `report.md` in the folder that holds the export folder (`takeout/report.md` for `takeout/2024-01-01/`).
 

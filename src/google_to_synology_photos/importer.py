@@ -6,7 +6,7 @@ read back, and a write that did not stick goes to the report.
 
 from pathlib import Path
 
-from google_to_synology_photos.description import photo_description
+from google_to_synology_photos.description import comment_line, photo_descriptions
 from google_to_synology_photos.paths import nas_path
 from google_to_synology_photos.report import Report
 from google_to_synology_photos.synology import SynologyPhotos
@@ -24,6 +24,12 @@ def run_import(export_dir: Path, nas: SynologyPhotos) -> Report:
     report.no_file = [
         f"{album.title}: {name}" for album in export.albums for name in album.no_file
     ]
+
+    report.orphan_comments = [
+        f"{album.title}: {comment_line(comment)}"
+        for album in export.albums
+        for comment in album.orphans
+    ] + [f"No known Album: {comment_line(comment)}" for comment in export.orphans]
 
     item_ids: dict[str, int] = {}
     for url, photo in export.photos.items():
@@ -43,15 +49,19 @@ def run_import(export_dir: Path, nas: SynologyPhotos) -> Report:
         if set(wanted) - set(nas.album_items(album_id)):
             report.failed_writes.append(f"Photos of Album {album.title!r}")
 
+    descriptions = photo_descriptions(export)
     for url, item_id in item_ids.items():
-        photo = export.photos[url]
-        text = photo_description(photo)
-        if not text:
+        description = descriptions[url]
+        # An empty text still clears what is there: the Album text can move away.
+        if nas.description(item_id) == description.text:
             continue
-        nas.set_description(item_id, text)
-        if nas.description(item_id) == text:
+        nas.set_description(item_id, description.text)
+        if nas.description(item_id) == description.text:
             report.descriptions_written += 1
+            report.comments_written += description.comments
+            report.likes_written += description.likes
         else:
-            report.failed_writes.append(f"Photo Description of {nas_path(photo)}")
+            path = nas_path(export.photos[url])
+            report.failed_writes.append(f"Photo Description of {path}")
 
     return report
