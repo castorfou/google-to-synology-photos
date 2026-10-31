@@ -10,7 +10,13 @@ some.
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 
-from google_to_synology_photos.takeout import Album, Comment, Export, Reactions
+from google_to_synology_photos.takeout import (
+    HEART,
+    Album,
+    Comment,
+    Export,
+    Reactions,
+)
 
 
 BLOCK_SEPARATOR = "\n\n"
@@ -39,7 +45,7 @@ def _reaction_lines(reactions: Reactions) -> list[str]:
     """Return the lines of the Comments, then the line of the Likes."""
     lines = [comment_line(c) for c in reactions.comments]
     if reactions.likes:
-        lines.append(f"❤️ {', '.join(reactions.likes)}")
+        lines.append(f"{HEART} {', '.join(reactions.likes)}")
     return lines
 
 
@@ -79,7 +85,7 @@ def photo_descriptions(export: Export) -> dict[str, PhotoDescription]:
             comments[url] += len(reactions.comments)
             likes[url] += len(reactions.likes)
 
-    descriptions = {}
+    descriptions: dict[str, PhotoDescription] = {}
     for url, photo in export.photos.items():
         blocks = [
             *_titled_blocks(album_texts_of[url]),

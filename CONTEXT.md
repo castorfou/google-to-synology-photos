@@ -65,10 +65,18 @@ _Avoid_: description, title, comment
 A message posted by any person (often Family) on a photo or Album in a shared Album.
 _Avoid_: caption, remark
 
+**Orphan Comment**:
+A Comment with no photo to sit on in the NAS Library, often because another Contributor's photo is missing from the Takeout Export. It joins its Album's text and the report.
+_Avoid_: lost comment, unmatched comment
+
 **Like**:
-A heart that a person puts on a photo in a shared Album.
+A heart that a person puts on a photo or Album in a shared Album.
 _Avoid_: favourite (a favourite is the owner's star, not a Like)
 
 **Photo Description**:
 The text shown with a photo in the NAS Library: its Caption, followed by its Comments and Likes written out as text (author, date), from every Album the photo is in. The oldest photo of an Album also carries the Album's own description, Comments and Likes.
 _Avoid_: caption, comment
+
+**Album text**:
+The Album's own description, Comments, Likes and Orphan Comments, shown at the start of the Photo Description of its oldest photo.
+_Avoid_: album description (that is only one part of it)

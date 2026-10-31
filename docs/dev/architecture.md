@@ -38,12 +38,31 @@ Comments and Likes sit in `sharedAlbumComments` lists. Each entry has `creationT
 - **On an Album:** in its `métadonnées.json`, with `contentOwnerName`. The same file may hold a `description`.
 - **Root file:** `commentaires_albums_partagés.json` (`shared_album_comments.json` in English), at the root of `Google Photos`. Its entries have no `contentOwnerName`. They have a `contentUrl`, the share link of their Album.
 
-Most root entries repeat an entry of a sidecar or of a `métadonnées.json`, with the same text and timestamp. This repetition ties a share link to its Album, since nothing else in the export does. A root entry that repeats nothing is an **orphan Comment**:
+Most root entries repeat an entry of a sidecar or of a `métadonnées.json`, with the same text and timestamp. This repetition ties a share link to its Album, since nothing else in the export does.
 
-- When its share link is tied to an Album, it joins the orphan Comments of that Album.
-- Otherwise it has no known Album.
+An **orphan Comment** is a Comment with no photo to sit on. It joins the Album text, and the report lists it with its Album:
+
+- A root entry that repeats nothing is an orphan of the Album its share link is tied to. When the link is tied to no Album, it has no known Album and only the report lists it.
+- A Comment on a photo whose file is not in the export is an orphan of that Album.
+- A Comment on an Album with no imported photo is an orphan too. It has no text to join, so only the report lists it.
 
 A root entry with `liked: true` has no name to show, so an orphan one is kept as a Comment whose text is `❤️`.
+
+### Which file is imported
+
+- **Edited photo:** an edited file has no sidecar of its own. It sits next to its original, as `IMG-modifié.JPG` (`IMG-edited.JPG` in English), or `IMG-modifié(1).JPG` for a repeated name. When any folder holds it for a `url`, it is imported instead of the original, under the sidecar `title`, so the NAS path is the same as for an unedited photo.
+- **Motion Photo:** only `IMG.MP.jpg` has a sidecar. The `IMG.MP` and `IMG.MP~2` video parts have none, so they are never imported.
+- Media files with no sidecar are not imported.
+
+### Files missing from the export
+
+Two different photos can share a name and a year folder while the export holds only one file for them: `IMG.JPG` belongs to the first sidecar, and `IMG(1).JPG` does not exist. The second photo has no file anywhere. It is not paired with `IMG.JPG`, which is another photo, and the report lists it under *Album photos with no file in the export*, as `<Album title>: <name>`.
+
+### Export of selected Albums
+
+An export of selected Albums has no year folders, and it brings the sidecars of some photos without their media. When no folder of sidecars sits outside the Albums and at least one Album photo has no file, `read_export` raises `SelectedAlbumsExportError`. The run stops before any write, and the CLI prints the titles of those Albums and asks for a full Takeout Export.
+
+A full export always has year folders, so a few missing files never stop it, even when they are all the photos of a small Album. A ZIP left out of the folder is not refused: its photos show in the report as photos with no file.
 
 ## Photo Description
 
@@ -72,22 +91,6 @@ kept as they are
 - The Likes line is `❤️ <name>, <name>`.
 - When more than one Album brings Comments or Likes to a photo, each of these blocks starts with a line holding the Album title, and Albums come in folder order. Album texts on one photo follow the same rule.
 - The oldest photo is chosen by date taken, then by `url`, at every run, so the Album text moves when an older photo joins the Album.
-
-### Which file is imported
-
-- **Edited photo:** an edited file has no sidecar of its own. It sits next to its original, as `IMG-modifié.JPG` (`IMG-edited.JPG` in English), or `IMG-modifié(1).JPG` for a repeated name. When any folder holds it for a `url`, it is imported instead of the original, under the sidecar `title`, so the NAS path is the same as for an unedited photo.
-- **Motion Photo:** only `IMG.MP.jpg` has a sidecar. The `IMG.MP` and `IMG.MP~2` video parts have none, so they are never imported.
-- Media files with no sidecar are not imported.
-
-### Files missing from the export
-
-Two different photos can share a name and a year folder while the export holds only one file for them: `IMG.JPG` belongs to the first sidecar, and `IMG(1).JPG` does not exist. The second photo has no file anywhere. It is not paired with `IMG.JPG`, which is another photo, and the report lists it under *Album photos with no file in the export*, as `<Album title>: <name>`.
-
-### Export of selected Albums
-
-An export of selected Albums has no year folders, and it brings the sidecars of some photos without their media. When no folder of sidecars sits outside the Albums and at least one Album photo has no file, `read_export` raises `SelectedAlbumsExportError`. The run stops before any write, and the CLI prints the titles of those Albums and asks for a full Takeout Export.
-
-A full export always has year folders, so a few missing files never stop it, even when they are all the photos of a small Album. A ZIP left out of the folder is not refused: its photos show in the report as photos with no file.
 
 ## NAS path rule
 

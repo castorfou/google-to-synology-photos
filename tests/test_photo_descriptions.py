@@ -278,3 +278,48 @@ def test_comments_and_likes_of_a_write_that_did_not_stick_are_not_counted(
 
     assert "- Comments written: 0\n" in report.render()
     assert "- Likes written: 0\n" in report.render()
+
+
+def test_a_comment_on_a_photo_with_no_file_becomes_an_orphan_of_its_album(
+    tmp_path: Path,
+) -> None:
+    takeout = TakeoutBuilder()
+    album = takeout.album("Noël")
+    takeout.photo(album, "IMG_0001.JPG", URL)
+    missing = takeout.photo(album, "IMG_0002.JPG", URL_2, has_file=False)
+    takeout.comment(album, missing, "Zoé", DAY_2, "Où est-elle ?")
+    takeout.root_comment("SHARE1", DAY_2, "Où est-elle ?")
+    nas = FakeSynologyPhotos()
+
+    report = run_import(takeout.write(tmp_path / "export"), nas)
+
+    assert nas.item(PHOTO_PATH).description == "Zoé, 2016-08-10: Où est-elle ?"
+    assert report.orphan_comments == ["Noël: Zoé, 2016-08-10: Où est-elle ?"]
+    assert report.comments_written == 1
+
+
+def test_a_comment_on_an_album_with_no_imported_photo_is_reported(
+    tmp_path: Path,
+) -> None:
+    takeout = TakeoutBuilder()
+    takeout.photo(takeout.album("Noël"), "IMG_0001.JPG", URL)
+    album = takeout.album("Pâques", sidecars_only=True)
+    takeout.photo(album, "IMG_0002.JPG", URL_2, has_file=False)
+    takeout.album_comment(album, "Zoé", DAY_1, "Quel séjour")
+
+    report = run_import(takeout.write(tmp_path / "export"), FakeSynologyPhotos())
+
+    assert report.orphan_comments == ["Pâques: Zoé, 2016-08-09: Quel séjour"]
+
+
+def test_a_video_gets_comments_and_likes_like_a_photo(tmp_path: Path) -> None:
+    takeout = TakeoutBuilder()
+    album = takeout.album("Noël")
+    video = takeout.photo(album, "MOV_0001.mp4", URL, caption="Le sapin")
+    takeout.like(album, video, "Zoé", DAY_1)
+    nas = FakeSynologyPhotos()
+
+    run_import(takeout.write(tmp_path / "export"), nas)
+
+    path = "Photos/Google Photos/2013/MOV_0001__yxk3qp.mp4"
+    assert nas.item(path).description == "Le sapin\n\n❤️ Zoé"

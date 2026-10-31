@@ -14,6 +14,7 @@ SIDECAR = re.compile(r"(?P<name>.+)\.supplemental-metadata(?P<index>\(\d+\))?\.j
 # An edited photo has no sidecar of its own: it shares the original's.
 EDITED_SUFFIXES = ("-modifié", "-edited")
 ALBUM_METADATA_NAMES = ("métadonnées.json", "metadata.json")
+HEART = "❤️"
 ROOT_COMMENTS_NAMES = (
     "commentaires_albums_partagés.json",
     "shared_album_comments.json",
@@ -77,7 +78,7 @@ class Album:
     photo_reactions holds the Comments and Likes on its photos, by url, only for
     the photos that have some: a photo in two Albums has different ones in each.
     reactions holds the Comments and Likes on the Album itself.
-    orphans holds its root Comments that match no photo.
+    orphans holds its Comments that have no photo to sit on, oldest first.
     """
 
     title: str
@@ -109,9 +110,17 @@ def _media_name(name: str, index: str, edited_suffix: str = "") -> str:
     return f"{stem}{edited_suffix}{index}{dot}{ext}"
 
 
+# What the same Comment shares in the root file and elsewhere.
+EntryKey = tuple[str, bool, str]
+
+
+def _timestamp(entry: dict) -> int:
+    return int(entry["creationTime"]["timestamp"])
+
+
 def _reactions(entries: list[dict]) -> Reactions:
     """Return the sharedAlbumComments of a JSON file, oldest first."""
-    entries = sorted(entries, key=lambda e: int(e["creationTime"]["timestamp"]))
+    entries = sorted(entries, key=_timestamp)
     return Reactions(
         [_comment(e) for e in entries if "text" in e],
         [e["contentOwnerName"] for e in entries if e.get("liked")],
@@ -119,22 +128,24 @@ def _reactions(entries: list[dict]) -> Reactions:
 
 
 def _comment(entry: dict) -> Comment:
-    # A Like read as a Comment comes from the root file: it has no name to show.
+    """Return an entry as a Comment.
+
+    A Like read as a Comment comes from the root file: it has no name to show.
+    """
     return Comment(
         entry.get("contentOwnerName", ""),
-        datetime.fromtimestamp(int(entry["creationTime"]["timestamp"]), UTC),
-        entry.get("text", "❤️"),
+        datetime.fromtimestamp(_timestamp(entry), UTC),
+        entry.get("text", HEART),
     )
 
 
-def _entry_key(entry: dict) -> tuple[str, bool, str]:
-    """Return what the same Comment shares in the root file and elsewhere."""
+def _entry_key(entry: dict) -> EntryKey:
     timestamp = entry["creationTime"]["timestamp"]
     return entry.get("text", ""), entry.get("liked", False), timestamp
 
 
 def _place_root_comments(
-    root_comments: list[dict], album_of_entry: dict[tuple[str, bool, str], Album]
+    root_comments: list[dict], album_of_entry: dict[EntryKey, Album]
 ) -> list[Comment]:
     """Add the root Comments that match no photo to the orphans of their Album.
 
@@ -148,9 +159,7 @@ def _place_root_comments(
             album_of_link.setdefault(entry["contentUrl"], album)
 
     unknown: list[Comment] = []
-    for entry in sorted(
-        root_comments, key=lambda e: int(e["creationTime"]["timestamp"])
-    ):
+    for entry in sorted(root_comments, key=_timestamp):
         if _entry_key(entry) not in album_of_entry:
             album = album_of_link.get(entry["contentUrl"])
             (unknown if album is None else album.orphans).append(_comment(entry))
@@ -226,13 +235,26 @@ def read_export(export_dir: Path) -> Export:
     for folder, metadata in sorted(album_folders.items()):
         urls = urls_by_folder.get(folder, [])
         no_file = [sidecar_of[url]["title"] for url in urls if url not in photos]
+        reactions_by_url = photo_reactions.get(folder, {})
+        kept = [u for u in urls if u in photos]
+        album_reactions = _reactions(metadata.get("sharedAlbumComments", []))
+        # Comments with nothing to sit on: a photo with no file, an empty Album.
+        orphans = [
+            comment
+            for url, reactions in reactions_by_url.items()
+            if url not in photos
+            for comment in reactions.comments
+        ]
+        if not kept:
+            orphans += album_reactions.comments
         albums[folder] = Album(
-            metadata["title"],
-            [u for u in urls if u in photos],
-            no_file,
-            photo_reactions.get(folder, {}),
-            metadata.get("description", ""),
-            _reactions(metadata.get("sharedAlbumComments", [])),
+            title=metadata["title"],
+            urls=kept,
+            no_file=no_file,
+            photo_reactions={u: r for u, r in reactions_by_url.items() if u in photos},
+            description=metadata.get("description", ""),
+            reactions=album_reactions,
+            orphans=orphans,
         )
 
     # A full export also misses a few files, but it always has year folders:
@@ -242,19 +264,21 @@ def read_export(export_dir: Path) -> Export:
         if without_files:
             raise SelectedAlbumsExportError(without_files)
 
-    album_of_entry: dict[tuple[str, bool, str], Album] = {}
-    for folder, sidecar in [
+    album_of_entry: dict[EntryKey, Album] = {}
+    for folder, json_file in [
         *((folder, sidecar) for folder, _, sidecar in sidecars),
         *album_folders.items(),
     ]:
         if folder in albums:
-            for entry in sidecar.get("sharedAlbumComments", []):
+            for entry in json_file.get("sharedAlbumComments", []):
                 album_of_entry[_entry_key(entry)] = albums[folder]
-    orphans = _place_root_comments(root_comments, album_of_entry)
+    unknown_album = _place_root_comments(root_comments, album_of_entry)
+    for album in albums.values():
+        album.orphans.sort(key=lambda comment: comment.when)
 
     in_albums = {url for album in albums.values() for url in album.urls}
     return Export(
         {u: p for u, p in photos.items() if u in in_albums},
         list(albums.values()),
-        orphans,
+        unknown_album,
     )
