@@ -118,3 +118,8 @@ On lance `/retro`, ou directement #32 ?
 La PR #42 est fusionnée sur GitHub (commit `5161ec4`), avec ton commit de notes et une CI verte sur son dernier commit. La branche est supprimée et ton `main` local est à jour.
 
 La suite recommandée est `/clear`, puis `/mattpocock-skills:implement #32`.
+
+
+Puis `/clear`, puis `/mattpocock-skills:implement #31`.
+
+Puis `/clear`, puis `/mattpocock-skills:implement #33`.
