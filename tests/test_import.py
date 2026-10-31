@@ -88,7 +88,7 @@ def test_an_export_in_several_zips_imports_with_album_folders_of_sidecars_only(
 ) -> None:
     takeout = TakeoutBuilder()
     album = takeout.album("Mariage", sidecars_only=True)
-    takeout.photo(album, "IMG_0001.JPG", URL, caption="Le gâteau")
+    photo = takeout.photo(album, "IMG_0001.JPG", URL, caption="Le gâteau")
     takeout.loose_photo("IMG_0003.JPG", URL_3)
     nas = FakeSynologyPhotos()
 
@@ -96,7 +96,7 @@ def test_an_export_in_several_zips_imports_with_album_folders_of_sidecars_only(
 
     assert nas.album_contents() == [("Mariage", [PHOTO_PATH])]
     assert nas.item(PHOTO_PATH).description == "Le gâteau"
-    assert nas.item(PHOTO_PATH).data == takeout.albums[0].photos[0].data
+    assert nas.item(PHOTO_PATH).data == photo.data
 
 
 def test_a_photo_in_two_albums_is_one_nas_item_in_both(tmp_path: Path) -> None:
@@ -225,6 +225,21 @@ def test_an_album_photo_whose_file_is_not_in_the_export_is_reported(
     assert "- Noël: IMG_0001.JPG" in report.render()
 
 
+def test_a_small_album_with_no_file_at_all_does_not_stop_a_full_export(
+    tmp_path: Path,
+) -> None:
+    takeout = TakeoutBuilder()
+    takeout.photo(takeout.album("Noël"), "IMG_0001.JPG", URL)
+    album = takeout.album("Pâques", sidecars_only=True)
+    takeout.photo(album, "IMG_0002.JPG", URL_2, has_file=False)
+    nas = FakeSynologyPhotos()
+
+    report = run_import(takeout.write(tmp_path / "export"), nas)
+
+    assert nas.album_contents() == [("Noël", [PHOTO_PATH]), ("Pâques", [])]
+    assert "- Pâques: IMG_0002.JPG" in report.render()
+
+
 def test_a_selected_albums_export_stops_the_run_before_any_write(
     tmp_path: Path,
 ) -> None:
@@ -236,7 +251,33 @@ def test_a_selected_albums_export_stops_the_run_before_any_write(
     nas = FakeSynologyPhotos()
 
     with pytest.raises(SelectedAlbumsExportError, match="Pâques"):
-        run_import(takeout.write(tmp_path / "export"), nas)
+        run_import(takeout.write(tmp_path / "export", year_folders=False), nas)
 
     assert nas.paths() == []
     assert nas.album_contents() == []
+
+
+def test_a_selected_albums_export_is_refused_when_each_album_has_some_files(
+    tmp_path: Path,
+) -> None:
+    takeout = TakeoutBuilder()
+    album = takeout.album("Pâques")
+    takeout.photo(album, "IMG_0001.JPG", URL)
+    takeout.photo(album, "IMG_0002.JPG", URL_2, has_file=False)
+    nas = FakeSynologyPhotos()
+
+    with pytest.raises(SelectedAlbumsExportError, match="Pâques"):
+        run_import(takeout.write(tmp_path / "export", year_folders=False), nas)
+
+    assert nas.paths() == []
+
+
+def test_an_english_export_is_read_like_a_french_one(tmp_path: Path) -> None:
+    takeout = TakeoutBuilder(edited_suffix="-edited")
+    album = takeout.album("Christmas")
+    photo = takeout.photo(album, "IMG_0001.JPG", URL, edited=True)
+    nas = FakeSynologyPhotos()
+
+    run_import(takeout.write(tmp_path / "export"), nas)
+
+    assert nas.item(PHOTO_PATH).data == photo.edited

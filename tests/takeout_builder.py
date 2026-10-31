@@ -54,10 +54,11 @@ class SyntheticAlbum:
 class TakeoutBuilder:
     """Collects Albums and photos, then writes them as Takeout ZIPs."""
 
-    def __init__(self) -> None:
+    def __init__(self, edited_suffix: str = "-modifié") -> None:
         self.albums: list[SyntheticAlbum] = []
         # Photos in no Album: they sit only in their year folder.
         self.loose = SyntheticAlbum("")
+        self.edited_suffix = edited_suffix
 
     def album(self, title: str, sidecars_only: bool = False) -> SyntheticAlbum:
         """Add an Album folder with its métadonnées.json."""
@@ -98,23 +99,22 @@ class TakeoutBuilder:
         """Add a photo that belongs to no Album."""
         return self.photo(self.loose, name, url)
 
-    def write(self, export_dir: Path, zips: int = 1) -> Path:
+    def write(self, export_dir: Path, zips: int = 1, year_folders: bool = True) -> Path:
         """Write the export as ZIPs in export_dir; return export_dir.
 
         With several ZIPs, members are dealt out in turn, so a media file and
-        its sidecar sit in different ZIPs.
+        its sidecar sit in different ZIPs. An export of selected Albums has no
+        year folders.
         """
-        folders = _ExportFiles()
+        folders = _ExportFiles(self.edited_suffix)
         in_year_folder: set[str] = set()
         for album in self.albums:
             folder = f"{ROOT}/{album.title}"
-            folders.files[f"{folder}/{ALBUM_METADATA}"] = json.dumps(
-                {"title": album.title}, ensure_ascii=False
-            ).encode()
+            folders.add_album(folder, album.title)
             for photo in album.photos:
                 # An Album photo also sits in its year folder.
                 folders.add_photo(folder, photo, with_media=not album.sidecars_only)
-                if photo.url not in in_year_folder:
+                if year_folders and photo.url not in in_year_folder:
                     in_year_folder.add(photo.url)
                     folders.add_photo(_year_folder(photo), photo)
         for photo in self.loose.photos:
@@ -133,13 +133,21 @@ class TakeoutBuilder:
 class _ExportFiles:
     """The members of an export, with Google's `(1)` on repeated names."""
 
-    def __init__(self) -> None:
+    def __init__(self, edited_suffix: str) -> None:
         self.files: dict[str, bytes] = {}
+        self._edited_suffix = edited_suffix
         self._name_count: Counter[tuple[str, str]] = Counter()
+
+    def add_album(self, folder: str, title: str) -> None:
+        """Add the métadonnées.json of an Album folder."""
+        self.files[f"{folder}/{ALBUM_METADATA}"] = json.dumps(
+            {"title": title}, ensure_ascii=False
+        ).encode()
 
     def add_photo(
         self, folder: str, photo: SyntheticPhoto, with_media: bool = True
     ) -> None:
+        """Add the sidecar of a photo to folder and, with_media, its files."""
         repeat = self._name_count[folder, photo.name]
         self._name_count[folder, photo.name] += 1
         index = f"({repeat})" if repeat else ""
@@ -151,7 +159,8 @@ class _ExportFiles:
         stem, dot, ext = photo.name.rpartition(".")
         self.files[f"{folder}/{stem}{index}{dot}{ext}"] = photo.data
         if photo.edited is not None:
-            self.files[f"{folder}/{stem}-modifié{index}{dot}{ext}"] = photo.edited
+            edited = f"{folder}/{stem}{self._edited_suffix}{index}{dot}{ext}"
+            self.files[edited] = photo.edited
         if photo.motion:
             self.files[f"{folder}/{stem}"] = _jpeg_bytes(f"{photo.url}-video")
             self.files[f"{folder}/{stem}~2"] = _jpeg_bytes(f"{photo.url}-video-2")

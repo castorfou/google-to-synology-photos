@@ -22,9 +22,9 @@ class SelectedAlbumsExportError(Exception):
     def __init__(self, titles: list[str]) -> None:
         super().__init__(
             "this looks like an export of selected Albums, not a full Takeout "
-            f"Export: no photo file of {', '.join(repr(t) for t in titles)} is in "
-            "it. Nothing was imported. Request a full Takeout Export of Google "
-            "Photos, and check that every ZIP is in the folder."
+            "Export: it has no year folders, and photos of "
+            f"{', '.join(repr(t) for t in titles)} have no file in it. Nothing "
+            "was imported. Request a full Takeout Export of Google Photos."
         )
 
 
@@ -80,7 +80,7 @@ def read_export(export_dir: Path) -> Export:
     may hold only sidecars, so all the ZIPs are listed before anything is paired.
     Photos that belong to no Album are left out.
 
-    Raises SelectedAlbumsExportError when an Album has none of its files.
+    Raises SelectedAlbumsExportError on an export of selected Albums.
     """
     zip_of: dict[str, Path] = {}
     album_folders: dict[str, str] = {}
@@ -92,8 +92,8 @@ def read_export(export_dir: Path) -> Export:
                 folder, _, filename = member.rpartition("/")
                 if filename in ALBUM_METADATA_NAMES:
                     album_folders[folder] = json.loads(zf.read(member))["title"]
-                elif name := SIDECAR.fullmatch(filename):
-                    sidecars.append((folder, name, json.loads(zf.read(member))))
+                elif match := SIDECAR.fullmatch(filename):
+                    sidecars.append((folder, match, json.loads(zf.read(member))))
                 else:
                     zip_of[member] = zip_path
 
@@ -101,16 +101,16 @@ def read_export(export_dir: Path) -> Export:
     original_of: dict[str, str] = {}
     edited_of: dict[str, str] = {}
     urls_by_folder: dict[str, list[str]] = {}
-    for folder, name, sidecar in sidecars:
+    for folder, match, sidecar in sidecars:
         url = sidecar["url"]
         sidecar_of.setdefault(url, sidecar)
         urls_by_folder.setdefault(folder, []).append(url)
-        index = name["index"] or ""
-        original = f"{folder}/{_media_name(name['name'], index)}"
+        name, index = match["name"], match["index"] or ""
+        original = f"{folder}/{_media_name(name, index)}"
         if original in zip_of:
             original_of.setdefault(url, original)
         for suffix in EDITED_SUFFIXES:
-            edited = f"{folder}/{_media_name(name['name'], index, suffix)}"
+            edited = f"{folder}/{_media_name(name, index, suffix)}"
             if edited in zip_of:
                 edited_of.setdefault(url, edited)
 
@@ -135,10 +135,12 @@ def read_export(export_dir: Path) -> Export:
         no_file = [sidecar_of[url]["title"] for url in urls if url not in photos]
         albums.append(Album(title, [u for u in urls if u in photos], no_file))
 
-    # A full export can miss a few files, but never all those of an Album.
-    without_files = [a.title for a in albums if a.no_file and not a.urls]
-    if without_files:
-        raise SelectedAlbumsExportError(without_files)
+    # A full export also misses a few files, but it always has year folders:
+    # any folder of sidecars that is not an Album.
+    if album_folders.keys() >= urls_by_folder.keys():
+        without_files = [a.title for a in albums if a.no_file]
+        if without_files:
+            raise SelectedAlbumsExportError(without_files)
 
     in_albums = {url for album in albums for url in album.urls}
     return Export({u: p for u, p in photos.items() if u in in_albums}, albums)

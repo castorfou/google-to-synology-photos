@@ -54,7 +54,7 @@ def test_g2s_import_refuses_a_selected_albums_export_with_a_clear_message(
         "https://photos.google.com/photo/AF1QipSyntheticPhotoUrl0002",
         has_file=False,
     )
-    export = takeout.write(tmp_path / "takeout" / "2024-01-01")
+    export = takeout.write(tmp_path / "takeout" / "2024-01-01", year_folders=False)
     nas = FakeSynologyPhotos()
 
     with pytest.raises(SystemExit) as stop:

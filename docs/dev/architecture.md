@@ -42,7 +42,9 @@ Two different photos can share a name and a year folder while the export holds o
 
 ### Export of selected Albums
 
-An export of selected Albums brings the sidecars of an Album but none of its media. When an Album with sidecars has no file for any of its photos, `read_export` raises `SelectedAlbumsExportError`. The run stops before any write, and the CLI prints the titles of those Albums and asks for a full Takeout Export. A ZIP left out of the folder can stop the run in the same way.
+An export of selected Albums has no year folders, and it brings the sidecars of some photos without their media. When no folder of sidecars sits outside the Albums and at least one Album photo has no file, `read_export` raises `SelectedAlbumsExportError`. The run stops before any write, and the CLI prints the titles of those Albums and asks for a full Takeout Export.
+
+A full export always has year folders, so a few missing files never stop it, even when they are all the photos of a small Album. A ZIP left out of the folder is not refused: its photos show in the report as photos with no file.
 
 ## NAS path rule
 
