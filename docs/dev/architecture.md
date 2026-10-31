@@ -8,11 +8,11 @@ All code lives in `src/google_to_synology_photos/`.
 
 | Module | Role |
 |---|---|
-| `cli.py` | The `g2s` command: `g2s login` and `g2s import <export folder>`. Connects to the NAS, runs the import, prints the report and writes `report.md`. |
+| `cli.py` | The `g2s` command: `g2s login` and `g2s import <export folder>`. Connects to the NAS, runs the import, shows progress, prints the report and writes `report.md`. |
 | `login.py` | Login to the NAS as the NAS Account: what is asked, and what is kept where. |
 | `dsm.py` | Transport to the DSM Web API: login, calls, multipart uploads, TLS. |
 | `synology_client.py` | The real Synology Photos client, over the `SYNO.Foto.*` Web API. |
-| `importer.py` | The import use case, `run_import(export_dir, nas) -> Report`. The only entry the CLI calls, and the test seam. |
+| `importer.py` | The import use case, `run_import(export_dir, nas, progress) -> Report`. The only entry the CLI calls, and the test seam. Takes the snapshot of the NAS Library and pairs the Albums. |
 | `takeout.py` | Takeout reader. Reads every ZIP of the export in place, picks the file of each photo, and returns the photos by `url`, the Albums with their Comments and Likes, and the orphan Comments. Refuses an export of selected Albums. |
 | `media.py` | Media preparer: writes into a photo the date and position it lacks, with ExifTool, and converts the videos Synology Photos cannot play, with ffmpeg. |
 | `paths.py` | NAS path rule. |
@@ -117,7 +117,7 @@ A file is a video when its extension says so: ffprobe would take a HEIC photo fo
 A conversion gives an MP4 with H.264 video (CRF 20, 8-bit 4:2:0, even dimensions) and AAC audio, in place of the original, which stays in the ZIPs. The date taken goes into `creation_time`, in UTC, and replaces any date in the original. No text is written.
 
 - **ffmpeg.** `ffmpeg` and `ffprobe` must be on the `PATH`. Without them, `g2s` stops before any upload and says how to install them.
-- **Failure.** A video that ffprobe cannot read or ffmpeg cannot convert is not uploaded: sent as it is, it would sit beside its MP4 after a later run. The report lists its ZIP member under *Videos that failed to convert, not uploaded*, and the run goes on. It is in no Album, its own Comments and Likes are not written, and the text of its Album goes to the next oldest photo. A later run tries it again.
+- **Failure.** A video that ffprobe cannot read or ffmpeg cannot convert is not uploaded: sent as it is, later runs would find it on the NAS and never convert it. The report lists its ZIP member under *Videos that failed to convert, not uploaded*, and the run goes on. It is in no Album, its own Comments and Likes are not written, and the text of its Album goes to the next oldest photo. A later run tries it again.
 
 ## NAS path rule
 
@@ -133,20 +133,35 @@ Photos/Google Photos/<year taken>/<original name>__<6 chars>.<ext>
 
 The rule is deterministic: the same photo gets the same path in every export.
 
+The **identity** of a photo on the NAS is its path without the extension, so a converted video is found without probing or converting it again.
+
 ## Order of a run
 
 1. Read the export.
-2. Prepare every photo and upload it at its path. An upload to a path that is already taken keeps the file there and returns its id.
-3. Create every Album with its Google title and add its photos.
-4. Set each Photo Description that differs from the text on the NAS. An empty text clears what is there.
-5. Each write is read back right after it is made. A write that does not stick is listed in the report under *Writes that did not stick*.
-6. The CLI prints the report and writes it to `report.md` in the folder that holds the export folder (`takeout/report.md` for `takeout/2024-01-01/`).
+2. Take a snapshot of the NAS Library.
+3. Prepare and upload every photo whose identity the snapshot lacks. An upload to a path that is already taken keeps the file there and returns its id.
+4. Pair the Albums, create those with no pair, and add the photos each one lacks.
+5. Set each Photo Description that differs from the text on the NAS. An empty text clears what is there.
+6. Each write is read back right after it is made. A write that does not stick is listed in the report under *Writes that did not stick*.
+7. The CLI prints the report and writes it to `report.md` in the folder that holds the export folder (`takeout/report.md` for `takeout/2024-01-01/`).
+
+Progress goes to the standard error, one line per step, as `<step>: <number>/<total>`.
+
+### Running again
+
+A run keeps no state file. It writes only what the snapshot shows as missing, so a second run on the same export makes no write, and a run stopped at any point continues from any computer. When the connection is lost, the CLI says to run `g2s` again, and no report is written.
+
+The snapshot holds the items of the year folders of the export, and every normal Album with its items.
+
+Each Album of the export is paired one to one with a NAS Album. The pair sharing the most photos goes first, and the same title settles a tie. An Album left over takes an empty NAS Album of its title, which is what a run stopped between creating and filling an Album leaves. An Album with no pair is created. Photos are only ever added to a NAS Album.
+
+The report counts the photos found under *Already on the NAS*. Its lists cover the current run: a file sent without its date in an earlier run is not listed again. A failed conversion is tried again at each run.
 
 ## Synology Photos client
 
 `SynologyPhotos` speaks NAS paths and item ids:
 
-- `upload(path, data) -> id`, `overwrite(path, data) -> id`, `item_at(path) -> id | None`, `delete_item(id)`;
+- `upload(path, data) -> id`, `overwrite(path, data) -> id`, `folder_items(folder) -> {path: id}`, `item_at(path) -> id | None`, `delete_item(id)`;
 - `set_description(id, text)`, `description(id)`;
 - `create_album(name) -> id`, `rename_album(album_id, name)`, `add_to_album(album_id, item_ids)`, `albums()`, `album_items(album_id)`.
 
@@ -173,7 +188,8 @@ Tests run the import use case, or the `g2s` CLI, on synthetic data only:
 - `tests/takeout_builder.py` builds a synthetic Takeout Export with French names, in one or several ZIPs: Album folders with `métadonnées.json`, Album folders of sidecars only, year folders, sidecars, repeated names with their `(1)` index, `-modifié` files, Motion Photos, and photos with no file. Its media are real 1x1 JPEGs that hold a date by default, like a camera file, and the date and position in the file and in the sidecar can be set for each photo.
 - `tests/test_file_metadata.py` runs ExifTool for real on tiny JPEGs and PNGs, and reads the sent files back with Pillow, so that the check does not depend on the tool that writes.
 - `tests/test_video_conversion.py` runs ffmpeg for real on tiny videos, and reads the sent files back with ffprobe and ExifTool.
-- `tests/fake_synology.py` is an in-memory fake Synology Photos, true to the behaviour measured on the DS923. Setting `descriptions_stick = False` makes description writes silently not stick.
+- `tests/test_resumable_runs.py` runs imports again on the same fake NAS, and stops a run at every possible write.
+- `tests/fake_synology.py` is an in-memory fake Synology Photos, true to the behaviour measured on the DS923. Setting `descriptions_stick = False` makes description writes silently not stick. `writes` counts the write calls, and `writes_left` cuts the connection after that many.
 - `tests/test_contract.py` is the contract of the client. It runs against the fake always, and against the DS923 with `G2S_CONTRACT=1` (see [Synology Photos API](synology-photos-api.md)).
 - `tests/test_login.py` runs the login with an in-memory keyring and a fake NAS.
 

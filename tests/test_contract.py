@@ -156,6 +156,19 @@ def test_overwrite_of_an_empty_path_uploads(nas: Nas) -> None:
     assert nas.client.item_at(path) == item_id
 
 
+def test_folder_items_gives_the_items_of_a_folder_by_path(nas: Nas) -> None:
+    photo = nas.client.upload(nas.path("2013/red.jpg"), nas.media.photo)
+    nas.client.upload(nas.path("2014/blue.jpg"), nas.media.other_photo)
+
+    found = nas.client.folder_items(nas.path("2013"))
+
+    assert found == {nas.path("2013/red.jpg"): photo}
+
+
+def test_folder_items_of_a_missing_folder_is_empty(nas: Nas) -> None:
+    assert nas.client.folder_items(nas.path("1999")) == {}
+
+
 @pytest.mark.parametrize("kind", ["photo", "video"])
 def test_description_is_read_back_exactly(nas: Nas, kind: str) -> None:
     name, data = (

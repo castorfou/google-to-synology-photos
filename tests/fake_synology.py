@@ -5,6 +5,8 @@
 - Overwrite keeps the item id and reads the Photo Description again from the
   new file; the fake's files carry none, so it becomes empty.
 - Album names are not unique.
+- ``writes`` counts the write calls, and ``writes_left`` cuts the connection when it
+  reaches 0, so that a test can stop a run at any write.
 - Writes on unknown items answer success and do nothing; writes on an unknown
   Album fail.
 
@@ -35,6 +37,16 @@ class FakeSynologyPhotos:
         self._next_id = 1
         # Set to False to make description writes silently not stick.
         self.descriptions_stick = True
+        self.writes = 0
+        self.writes_left: int | None = None
+
+    def _write(self) -> None:
+        """Count a write call, or cut the connection."""
+        if self.writes_left == 0:
+            raise ConnectionError("connection lost")
+        if self.writes_left is not None:
+            self.writes_left -= 1
+        self.writes += 1
 
     def _new_id(self) -> int:
         self._next_id += 1
@@ -43,6 +55,7 @@ class FakeSynologyPhotos:
     # SynologyPhotos interface
 
     def upload(self, path: str, data: bytes) -> int:
+        self._write()
         existing = self.item_at(path)
         if existing is not None:
             return existing
@@ -56,16 +69,26 @@ class FakeSynologyPhotos:
         self._items[item_id].description = ""
         return item_id
 
+    def folder_items(self, folder: str) -> dict[str, int]:
+        prefix = f"{folder}/"
+        return {
+            i.path: i.id
+            for i in self._items.values()
+            if i.path.startswith(prefix) and "/" not in i.path.removeprefix(prefix)
+        }
+
     def item_at(self, path: str) -> int | None:
         return next((i.id for i in self._items.values() if i.path == path), None)
 
     def delete_item(self, item_id: int) -> None:
+        self._write()
         self._items.pop(item_id, None)
         for held in self._album_items.values():
             if item_id in held:
                 held.remove(item_id)
 
     def set_description(self, item_id: int, text: str) -> None:
+        self._write()
         if item_id in self._items and self.descriptions_stick:
             self._items[item_id].description = text
 
@@ -74,16 +97,19 @@ class FakeSynologyPhotos:
         return item.description if item else None
 
     def create_album(self, name: str) -> int:
+        self._write()
         album_id = self._new_id()
         self._album_names[album_id] = name
         self._album_items[album_id] = []
         return album_id
 
     def rename_album(self, album_id: int, name: str) -> None:
+        self._write()
         self._check_album(album_id, "rename_album")
         self._album_names[album_id] = name
 
     def add_to_album(self, album_id: int, item_ids: list[int]) -> None:
+        self._write()
         self._check_album(album_id, "add_to_album")
         held = self._album_items[album_id]
         held += [i for i in item_ids if i in self._items and i not in held]

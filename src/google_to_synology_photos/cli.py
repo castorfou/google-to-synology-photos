@@ -1,7 +1,10 @@
 """The g2s command line."""
 
 import argparse
+import http.client
+import json
 import ssl
+import sys
 import urllib.error
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -18,7 +21,7 @@ from google_to_synology_photos.login import (
     login,
 )
 from google_to_synology_photos.media import ExifToolMissingError, FfmpegMissingError
-from google_to_synology_photos.synology import SynologyPhotos
+from google_to_synology_photos.synology import SynologyError, SynologyPhotos
 from google_to_synology_photos.synology_client import SynologyPhotosClient
 from google_to_synology_photos.takeout import SelectedAlbumsExportError
 
@@ -59,6 +62,12 @@ def _network_problem(error: OSError) -> str:
     return f"cannot reach the NAS ({reason})."
 
 
+def _show_progress(step: str, number: int, total: int) -> None:
+    """Show the step of a run on one line, which each number overwrites."""
+    end = "\n" if number == total else ""
+    print(f"\r{step}: {number}/{total}", end=end, file=sys.stderr, flush=True)
+
+
 def main(
     argv: Sequence[str] | None = None,
     connect: Callable[[bool], SynologyPhotos] = connect_to_nas,
@@ -89,13 +98,24 @@ def main(
         parser.error(f"{export} is not a folder")
 
     try:
-        report = run_import(export, connect(False)).render()
+        report = run_import(export, connect(False), _show_progress).render()
     except (
         SelectedAlbumsExportError,
         ExifToolMissingError,
         FfmpegMissingError,
     ) as error:
         raise SystemExit(f"g2s: {error}") from error
+    except (
+        SynologyError,
+        OSError,
+        http.client.HTTPException,
+        json.JSONDecodeError,
+    ) as error:
+        print(file=sys.stderr)
+        raise SystemExit(
+            f"g2s: the run stopped ({error}). Run g2s again: it continues where "
+            "it stopped."
+        ) from error
     print(report)
     # The report sits next to the export folder, beside the other exports.
     (export.resolve().parent / REPORT_NAME).write_text(report, encoding="utf-8")

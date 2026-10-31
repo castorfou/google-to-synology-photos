@@ -29,7 +29,7 @@ Parameters are sent as a form POST. Values of the `SYNO.Foto.*` calls are JSON-e
 | Create an Album | `SYNO.Foto.Browse.NormalAlbum create` v1, `name`, `item=[]` | |
 | Add to an Album | `SYNO.Foto.Browse.NormalAlbum add_item` v1, `id`, `item=[...]` | Sent in batches of 100. |
 | Rename an Album | `SYNO.Foto.Browse.Album set_name` v1, `id`, `name` | `set` and `rename` do not exist (error 103). |
-| List Albums | `SYNO.Foto.Browse.Album list` v2, `offset`, `limit` | |
+| List Albums | `SYNO.Foto.Browse.Album list` v2, `offset`, `limit` | Each has a `type`. The client keeps `normal` only, the type `NormalAlbum add_item` works on. |
 | Items of an Album | `SYNO.Foto.Browse.Item list` v2, `album_id`, `offset`, `limit` | |
 | Index status | `SYNO.Foto.Index get` v1 | Counts of pending work: `basic`, `metadata`, `metadata_updating`, `thumbnail`… |
 

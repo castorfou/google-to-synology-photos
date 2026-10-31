@@ -39,6 +39,13 @@ class SynologyPhotos(Protocol):
         """
         ...
 
+    def folder_items(self, folder: str) -> dict[str, int]:
+        """Return the id of each item of a NAS folder, by path.
+
+        A folder that does not exist has no items.
+        """
+        ...
+
     def item_at(self, path: str) -> int | None:
         """Return the id of the item at path, or None."""
         ...
@@ -68,7 +75,7 @@ class SynologyPhotos(Protocol):
         ...
 
     def albums(self) -> list[NasAlbum]:
-        """Return every Album."""
+        """Return every normal Album: only those can receive items."""
         ...
 
     def album_items(self, album_id: int) -> list[int]:
