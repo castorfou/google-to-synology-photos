@@ -140,7 +140,7 @@ The **identity** of a photo on the NAS is its path without the extension, so a c
 1. Read the export.
 2. Take a snapshot of the NAS Library.
 3. Prepare and upload every photo whose identity the snapshot lacks. An upload to a path that is already taken keeps the file there and returns its id.
-4. Pair the Albums, create those with no pair, give the others their Google title, and add the photos each one lacks.
+4. Pair the Albums, create those with no pair, give the others their Google Photos title, and add the photos each one lacks.
 5. Set each Photo Description that differs from the text on the NAS. An empty text clears what is there.
 6. Each write is read back right after it is made. A write that does not stick is listed in the report under *Writes that did not stick*.
 7. The CLI prints the report and writes it to `report.md` in the folder that holds the export folder (`takeout/report.md` for `takeout/2024-01-01/`).
@@ -161,13 +161,13 @@ The report counts the photos found under *Already on the NAS*. Its lists cover t
 
 A Refresh is a run on a newer Takeout Export, and it follows the same steps. The NAS Library ends as the export says, whatever was changed in Google Photos or on the NAS:
 
-- **Album title.** A paired Album whose name differs from the Google title is renamed. This follows a rename in Google Photos and undoes a rename on the NAS. Pairing goes by photos, so two Albums with the same title stay separate.
+- **Album title.** A paired Album whose name differs from the Google Photos title is renamed. This follows a rename in Google Photos and undoes a rename on the NAS. Pairing goes by photos, so two Albums with the same title stay separate.
 - **Album content.** New Albums are created and new photos join their Album. A photo removed from an Album in Google Photos stays in the NAS Album.
-- **Deleted in Google Photos.** An Album or a photo missing from the export stays on the NAS, with its Photo Description. An Album of the export that shares a photo with the NAS Album of a deleted Album, and has no better pair, takes that NAS Album over and renames it.
+- **Deleted in Google Photos.** An Album or a photo missing from the export stays on the NAS, with its Photo Description. Pairing goes by shared photos only, so an Album of the export with no better pair takes over a NAS Album it shares a photo with, and renames it: this happens to the NAS Album of a deleted Album, and to the old Album when an Album is split in Google Photos.
 - **Text.** A Photo Description that differs from the export is written again, which also covers a changed Caption, new Comments and Likes, deleted Comments and edits made on the NAS.
 - **Deleted on the NAS.** A photo is sent again, joins its Albums and gets its text. An Album is recreated.
 
-The report counts *Albums renamed*, and *Photo Descriptions rewritten* apart from *Photo Descriptions written*: a Description is rewritten when the NAS held another text, and written when it held none. A rename is read back from the list of Albums. A rename that does not stick goes under *Writes that did not stick*.
+The report counts *Albums renamed*, and *Photo Descriptions rewritten* apart from *Photo Descriptions written*: a Description is rewritten when the NAS held another text, and written when it held none. *Comments written* and *Likes written* count all those in the texts written, not only the new ones. A rename is read back from the list of Albums. A rename that does not stick goes under *Writes that did not stick*.
 
 ## Synology Photos client
 

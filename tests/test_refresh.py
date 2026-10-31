@@ -22,7 +22,9 @@ AUGUST = datetime(2016, 8, 9, 14, 30, 5, tzinfo=UTC)
 SEPTEMBER = datetime(2016, 9, 2, 8, 0, 0, tzinfo=UTC)
 
 
-def test_an_album_renamed_in_google_is_renamed_on_the_nas(tmp_path: Path) -> None:
+def test_an_album_renamed_in_google_photos_is_renamed_on_the_nas(
+    tmp_path: Path,
+) -> None:
     before = TakeoutBuilder()
     before.photo(before.album("Été"), "IMG_0001.JPG", URL)
     newer = TakeoutBuilder()
@@ -111,7 +113,7 @@ def test_new_albums_and_new_photos_of_an_album_appear(tmp_path: Path) -> None:
     assert report.uploaded == 2
 
 
-def test_a_photo_removed_from_an_album_in_google_stays_in_the_nas_album(
+def test_a_photo_removed_from_an_album_in_google_photos_stays_in_the_nas_album(
     tmp_path: Path,
 ) -> None:
     before = TakeoutBuilder()
@@ -137,7 +139,9 @@ def test_a_photo_removed_from_an_album_in_google_stays_in_the_nas_album(
     ]
 
 
-def test_albums_and_photos_deleted_in_google_stay_on_the_nas(tmp_path: Path) -> None:
+def test_albums_and_photos_deleted_in_google_photos_stay_on_the_nas(
+    tmp_path: Path,
+) -> None:
     before = TakeoutBuilder()
     before.photo(before.album("Été"), "IMG_0001.JPG", URL, caption="La plage")
     before.photo(before.album("Noël"), "IMG_0002.JPG", URL_2)
@@ -178,7 +182,7 @@ def test_a_hand_made_album_with_a_photo_outside_the_library_is_untouched(
 def test_an_album_with_a_library_photo_of_a_year_left_out_of_the_export_is_used(
     tmp_path: Path,
 ) -> None:
-    """A photo deleted in Google is still inside the NAS Library."""
+    """A photo deleted in Google Photos is still inside the NAS Library."""
     before = TakeoutBuilder()
     album = before.album("Été")
     before.photo(album, "IMG_0001.JPG", URL)
@@ -216,7 +220,9 @@ def test_text_follows_the_latest_export(tmp_path: Path) -> None:
     assert "Photo Descriptions rewritten: 1" in report.render()
 
 
-def test_a_caption_deleted_in_google_is_cleared_on_the_nas(tmp_path: Path) -> None:
+def test_a_caption_deleted_in_google_photos_is_cleared_on_the_nas(
+    tmp_path: Path,
+) -> None:
     before = TakeoutBuilder()
     before.photo(before.album("Été"), "IMG_0001.JPG", URL, caption="La plage")
     newer = TakeoutBuilder()

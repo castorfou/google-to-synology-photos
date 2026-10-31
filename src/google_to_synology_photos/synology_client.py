@@ -95,9 +95,9 @@ class SynologyPhotosClient:
         """Return the id of each item of a NAS folder and its subfolders, by path."""
         top = "/" + folder.removeprefix(f"{PHOTOS_ROOT}/")
         return {
-            f"{PHOTOS_ROOT}{found}/{name}": item_id
-            for found in self._folder_tree(top)
-            for name, item_id in self._list_folder(found).items()
+            f"{PHOTOS_ROOT}{subfolder}/{name}": item_id
+            for subfolder in self._folder_tree(top)
+            for name, item_id in self._list_folder(subfolder).items()
         }
 
     def item_at(self, path: str) -> int | None:

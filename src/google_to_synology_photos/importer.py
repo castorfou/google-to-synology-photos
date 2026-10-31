@@ -39,14 +39,13 @@ class Snapshot:
 def take_snapshot(nas: SynologyPhotos) -> Snapshot:
     """Read what the NAS holds of the NAS Library."""
     listing = nas.folder_items(LIBRARY_ROOT)
+    items = {
+        identity_of_path(path): (path, item_id) for path, item_id in listing.items()
+    }
     library = set(listing.values())
+    albums = {album: set(nas.album_items(album.id)) for album in nas.albums()}
     return Snapshot(
-        {identity_of_path(path): (path, id_) for path, id_ in listing.items()},
-        {
-            album: held
-            for album in nas.albums()
-            if (held := set(nas.album_items(album.id))) <= library
-        },
+        items, {album: held for album, held in albums.items() if held <= library}
     )
 
 

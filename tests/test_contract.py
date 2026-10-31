@@ -266,6 +266,15 @@ def test_album_rename(nas: Nas) -> None:
     ]
 
 
+def test_album_names_are_kept_exactly(nas: Nas) -> None:
+    name = "  g2s contract/é: 🌊  "
+    album_id = nas.client.create_album("g2s contract old")
+
+    nas.client.rename_album(album_id, name)
+
+    assert (album_id, name) in [(a.id, a.name) for a in nas.client.albums()]
+
+
 def test_writes_on_an_unknown_album_fail(nas: Nas) -> None:
     item = nas.client.upload(nas.path("red.jpg"), nas.media.photo)
 
