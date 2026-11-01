@@ -21,6 +21,16 @@ All code lives in `src/google_to_synology_photos/`.
 | `synology.py` | `SynologyPhotos`, the interface of the Synology Photos client, and `SynologyError`. |
 | `report.py` | Counts and lists collected during a run, rendered as Markdown. |
 
+## Identity
+
+The tool keeps no record of the NAS Library, so these rules alone tell that two things are the same:
+
+- **A photo of a Takeout Export** is its sidecar `url`, which is stable across exports. File names are not unique.
+- **A photo known only from an Album Download** has no sidecar, so its content hash takes the place of the `url`: the SHA-256 of its file as it sits in the ZIP, in lowercase base32. When the same bytes are in the export, found by size and CRC, the export photo is used instead (see [Album Downloads](#album-downloads)).
+- **A photo on the NAS** is its path without the extension (see [NAS path rule](#nas-path-rule)). The path comes from the `url` or the content hash, so a run finds on the NAS what it sent before, from any computer.
+- **An Album** is its photos, not its title: titles change and are not unique. Each Album of the export is paired with the NAS Album that shares its photos (see [Running again](#running-again)). NAS Albums are only ever found by id.
+- **A Household's own Album** is a NAS Album holding any photo outside `Photos/Google Photos/`. A run never pairs it.
+
 ## Reading a Takeout Export
 
 The reader lists every ZIP before it pairs anything: a media file and its sidecar often sit in different ZIPs, and many Album folders hold only sidecars, with the media in other folders.
@@ -65,7 +75,7 @@ Two different photos can share a name and a year folder while the export holds o
 
 An export of selected Albums has no year folders, and it brings the sidecars of some photos without their media. When no folder of sidecars sits outside the Albums and at least one Album photo has no file, `read_export` raises `SelectedAlbumsExportError`. The run stops before any write, and the CLI prints the titles of those Albums and asks for a full Takeout Export.
 
-A full export always has year folders, so a few missing files never stop it, even when they are all the photos of a small Album. A ZIP left out of the folder is not refused: its photos show in the report as photos with no file.
+A full export always has year folders, so a few missing files never stop it, even when they are all the photos of a small Album. A ZIP left out of the folder is not refused. The photos whose sidecar sits in another ZIP show in the report as photos with no file, and those whose sidecar sat in the missing ZIP are simply absent, like an Album whose `métadonnées.json` sat there.
 
 ## Photo Description
 
@@ -269,8 +279,12 @@ Tests run the import use case, or the `g2s` CLI, on synthetic data only:
 - `tests/test_refresh.py` chains runs on an older and a newer export, with changes made on the fake NAS in between.
 - `tests/test_refresh_files.py` chains runs with a previous export: edits, changed videos and fixed dates.
 - `tests/test_album_downloads.py` adds synthetic Album Downloads, made by `write_album_download` in `tests/takeout_builder.py`, to runs on an export.
-- `tests/fake_synology.py` is an in-memory fake Synology Photos, true to the behaviour measured on the DS923 by default. Setting `descriptions_stick = False` or `album_names_stick = False` makes description writes or Album renames silently not stick, and `overwrite_keeps_id = False` gives an overwritten item a new id, out of its Albums. The DS923 keeps the id: that setting checks that the import does not rely on it. `writes` counts the write calls, and `writes_left` cuts the connection after that many.
-- `tests/test_contract.py` is the contract of the client. It runs against the fake always, and against the DS923 with `G2S_CONTRACT=1` (see [Synology Photos API](synology-photos-api.md)).
 - `tests/test_login.py` runs the login with an in-memory keyring and a fake NAS.
 
 Tests assert on what the Household would see in the fake (paths, Albums, Photo Descriptions) and on the report.
+
+### Fake Synology Photos
+
+`tests/fake_synology.py` is an in-memory fake Synology Photos, true to the behaviour measured on the DS923 by default. Setting `descriptions_stick = False` or `album_names_stick = False` makes description writes or Album renames silently not stick, and `overwrite_keeps_id = False` gives an overwritten item a new id, out of its Albums. The DS923 keeps the id: that setting checks that the import does not rely on it. `writes` counts the write calls, and `writes_left` cuts the connection after that many.
+
+`tests/test_contract.py` is the contract of the client, which keeps the fake true to the NAS. It runs against the fake always, and against the DS923 with `G2S_CONTRACT=1` (see [Contract test](synology-photos-api.md#contract-test)).

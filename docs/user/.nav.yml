@@ -1,2 +1,10 @@
 nav:
-  - Contenu: README.md
+  - Start here: README.md
+  - Prepare the NAS: nas-setup.md
+  - Install the tool: install.md
+  - Get the Takeout Export: takeout-export.md
+  - Run the first import: first-import.md
+  - Add Album Downloads: album-downloads.md
+  - Browse the NAS Library: browsing.md
+  - Run a Refresh: refresh.md
+  - Problems and solutions: troubleshooting.md
