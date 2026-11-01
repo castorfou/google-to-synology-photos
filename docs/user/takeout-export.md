@@ -5,7 +5,7 @@
 1. Go to [takeout.google.com](https://takeout.google.com), signed in with the Household Account.
 2. Click **Deselect all**.
 3. Find **Google Photos**, and tick it.
-4. Leave **All photo albums included** as it is. The tool refuses an export of selected Albums.
+4. Leave **All photo albums included** as it is. Do not pick single Albums: the tool needs a full export, and a Refresh from a partial one would miss the rest.
 5. Click **Next step**.
 6. Choose **Send download link via email**, **Export once**, and the file type **.zip**.
 7. Choose a large file size, such as 10 GB or more, so that you get fewer files.
@@ -34,7 +34,7 @@ takeout/
 
 The name matters: the tool uses it to tell which export is older. Each Takeout Export gets its own folder.
 
-Check that the number of ZIPs in the folder matches the number in Google's email. A ZIP left out is not an error for the tool: the photos in it are simply missing, and the report lists them.
+Check that the number of ZIPs in the folder matches the number in Google's email. The tool does not notice a ZIP left out: what it holds is simply missing, and the report does not always list it. A whole Album can go missing that way.
 
 !!! danger "Never delete an old export"
     Keep every Takeout Export on the NAS, even after a Refresh. The tool compares each new export with the one before it to find what changed. Old exports also hold your original videos and the earlier versions of edited photos.

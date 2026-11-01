@@ -1,6 +1,6 @@
 # Developer guide
 
-`g2s` is a Python 3.12 command-line tool that turns a Google Takeout Export into a NAS Library in Synology Photos. It has no state of its own: each run works from the exports and from what the NAS holds.
+`g2s` is a Python 3.12 command-line tool that turns a Google Takeout Export into a NAS Library in Synology Photos. It keeps no record of the NAS Library: each run works from the exports and from what the NAS holds.
 
 The vocabulary (Album, Caption, Refresh and so on) is defined in `CONTEXT.md` at the repository root. Commands, conventions and the workflow are in `CLAUDE.md`.
 
@@ -20,12 +20,7 @@ Read [Synology Photos API](synology-photos-api.md) before changing `dsm.py` or `
 
 ## Working on the code
 
-```bash
-uv sync --active --all-extras     # dependencies
-uv run --active pytest            # tests; needs ffmpeg and ExifTool
-uv run --active mkdocs build --strict
-pre-commit run --all-files
-```
+The tests need `ffmpeg` and ExifTool: they run both for real on tiny synthetic files.
 
 The repository is public. Tests, fixtures and docs hold no personal data, and the real exports stay in `data/raw/`, which git ignores.
 

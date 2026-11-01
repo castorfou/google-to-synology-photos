@@ -29,7 +29,7 @@ The tool keeps no record of the NAS Library, so these rules alone tell that two 
 - **A photo known only from an Album Download** has no sidecar, so its content hash takes the place of the `url`: the SHA-256 of its file as it sits in the ZIP, in lowercase base32. When the same bytes are in the export, found by size and CRC, the export photo is used instead (see [Album Downloads](#album-downloads)).
 - **A photo on the NAS** is its path without the extension (see [NAS path rule](#nas-path-rule)). The path comes from the `url` or the content hash, so a run finds on the NAS what it sent before, from any computer.
 - **An Album** is its photos, not its title: titles change and are not unique. Each Album of the export is paired with the NAS Album that shares its photos (see [Running again](#running-again)). NAS Albums are only ever found by id.
-- **An Album of the Household** is a NAS Album holding any photo outside `Photos/Google Photos/`. A run never pairs it.
+- **A Household's own Album** is a NAS Album holding any photo outside `Photos/Google Photos/`. A run never pairs it.
 
 ## Reading a Takeout Export
 
@@ -75,7 +75,7 @@ Two different photos can share a name and a year folder while the export holds o
 
 An export of selected Albums has no year folders, and it brings the sidecars of some photos without their media. When no folder of sidecars sits outside the Albums and at least one Album photo has no file, `read_export` raises `SelectedAlbumsExportError`. The run stops before any write, and the CLI prints the titles of those Albums and asks for a full Takeout Export.
 
-A full export always has year folders, so a few missing files never stop it, even when they are all the photos of a small Album. A ZIP left out of the folder is not refused: its photos show in the report as photos with no file.
+A full export always has year folders, so a few missing files never stop it, even when they are all the photos of a small Album. A ZIP left out of the folder is not refused. The photos whose sidecar sits in another ZIP show in the report as photos with no file, and those whose sidecar sat in the missing ZIP are simply absent, like an Album whose `métadonnées.json` sat there.
 
 ## Photo Description
 

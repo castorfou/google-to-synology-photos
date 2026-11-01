@@ -40,7 +40,7 @@ The tool adds only the photos the Album lacks, so nothing is imported twice. The
 
 ## What to expect
 
-- A photo that comes only from an Album Download has no Caption, no Comments and no place on the NAS: the ZIP does not hold them.
+- A photo that comes only from an Album Download has no Caption and no Comments on the NAS, and a place only if its file holds one: the ZIP has no other data.
 - A photo needs a date to be added. The tool takes it from the file, or from a date in the file name. The report lists the files with neither.
 - A photo the Household Account also saved to its own library joins the Album with its Caption.
 

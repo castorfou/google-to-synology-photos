@@ -13,7 +13,7 @@ After an import, the NAS works for some hours in the background to make thumbnai
 
 ## What you see
 
-- **Albums** holds every Album, with its Google title.
+- **Albums** holds every Album, with its Google Photos title.
 - The photo timeline shows each photo at its real date.
 - The photos are stored in the folder `Google Photos`, with one folder per year.
 
@@ -29,7 +29,7 @@ Paul, 2016-12-26: Merry Christmas
 
 - First comes the Caption, then the Comments with their author and date, then a line with the Likes.
 - A photo in several Albums shows the Comments of each one. When more than one Album has some, the Album title comes before them.
-- The **oldest photo of an Album** starts with the text of the Album itself: its description, its Comments and Likes, and the Comments that match no photo.
+- The **oldest photo of an Album** starts with the **Album text**: the description of the Album, its Comments and Likes, and the Comments that match no photo.
 
 ## Your own Albums
 

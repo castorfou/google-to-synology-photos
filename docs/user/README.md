@@ -1,18 +1,18 @@
 # Start here
 
-This guide takes you from nothing to your Google Photos Albums in Synology Photos on your own NAS, with their captions and comments.
+This guide takes you from nothing to your Google Photos Albums in Synology Photos on your own NAS, with their Captions and Comments.
 
 You need to be able to follow commands in a terminal. You do not need to write code.
 
 ## What the tool does
 
-`g2s` is a command-line tool. It runs on your computer (Linux, macOS or Windows), not on the NAS. It reads a Google Takeout download and builds a private copy of your Albums in Synology Photos:
+`g2s` is a command-line tool. It runs on your computer (Linux, macOS or Windows), not on the NAS. It reads a Takeout Export and builds a private copy of your Albums in Synology Photos:
 
 - Every Album keeps its title and its photos and videos.
 - A photo in several Albums shows in each of them, and is stored once.
 - Each photo gets its real date and its place, even when the file has lost them.
 - Videos that Synology Photos cannot play become MP4 files.
-- Captions, Comments and Likes show as the description of each photo, with names and dates.
+- Captions, Comments and Likes show in the Photo Description of each photo, with names and dates.
 
 Google Photos stays in use. A few times a year, you bring the copy up to date with a newer download.
 
@@ -22,7 +22,7 @@ Google Photos stays in use. A few times a year, you bring the copy up to date wi
 - Albums owned by another Google account.
 - Faces, favourites and archived photos.
 
-Only the owner's photos are in a Google download. Photos that other people added to a shared Album are missing from it. [Album Downloads](album-downloads.md) bring them back.
+A Takeout Export holds only the photos in the Household Account's library. Photos that other people added to a shared Album are missing from it. [Album Downloads](album-downloads.md) bring them back.
 
 ## Words used in this guide
 

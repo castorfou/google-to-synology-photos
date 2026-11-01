@@ -62,7 +62,7 @@ The first lines count what the run did. Then come lists, and most of them should
 | **Files sent without their missing date or position** | ExifTool could not write into this file. It is on the NAS, and may show the wrong date. | Nothing to fix with the tool. |
 | **Videos that failed to convert, not uploaded** | This video is not on the NAS. | Each run tries it again. It stays safe in the ZIPs. |
 | **Album photos with no file in the export** | An Album lists this photo, but no ZIP holds it. | Check that you copied every ZIP. |
-| **Comments that match no photo** | The photo of this Comment is not in the export. The Comment shows in the text of its Album when its Album is known. | Usually, make an Album Download. |
+| **Comments that match no photo** | The photo of this Comment is not in the export. The Comment shows in the Album text when its Album is known. | Usually, make an Album Download. |
 | **Shared Albums where photos are surely missing** | Other people added photos here, and they are not in the export. | [Make an Album Download](album-downloads.md). |
 | **Album Downloads** | The ZIPs used, and how many photos each added. | Nothing. |
 | **Album Downloads that match no Album** | No Album was found for this ZIP. | Check that it is the right ZIP. |

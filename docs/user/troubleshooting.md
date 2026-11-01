@@ -22,8 +22,12 @@ A stop during a Refresh may replace the same changed files again at the next run
 | `cannot reach the NAS` | Check that the NAS is on, that the address is right, and that you are on its network or VPN. |
 | `the OS keyring cannot be used` | `g2s` keeps the password in the keyring of your computer. On Linux, you need a running keyring, such as GNOME Keyring or KWallet, so run `g2s` in a desktop session. |
 | `the run stopped (...)` | Run the same command again. |
+| A long error that ends with `BadZipFile` | A ZIP is damaged, often by a download that did not finish. Download that ZIP again from Google, and replace it on the NAS. |
 
 ## Questions
+
+**The report counts no photos at all.**
+The folder holds no ZIPs: you gave the wrong folder, or the ZIPs were unzipped. The tool still marks this folder as done, with a hidden file named `.g2s-done`. Delete that file, copy the ZIPs into the folder, and run the command again.
 
 **A photo is missing from an Album.**
 Another person probably added it. See [Album Downloads](album-downloads.md).
@@ -32,10 +36,10 @@ Another person probably added it. See [Album Downloads](album-downloads.md).
 The tool imports only Albums the Household Account owns. Check that the Album appears in the export.
 
 **A Comment disappeared from the NAS.**
-It was deleted in Google Photos: the text follows Google.
+It was deleted in Google Photos: the text follows Google Photos.
 
 **A date looks wrong.**
-Fix it in Google Photos. The next Refresh moves the photo to the right date.
+Fix it in Google Photos. The next Refresh moves the photo to the folder of the right year. The tool never changes a date the file already holds, so Synology Photos may keep showing that date.
 
 **I deleted a photo on the NAS by mistake.**
 If it is still in Google Photos, the next Refresh sends it again, and runs on the same export do too. If you need it now, get it from the [Recycle Bin](nas-setup.md#turn-on-the-homes-recycle-bin).

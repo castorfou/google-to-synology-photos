@@ -43,31 +43,27 @@ Any computer can run a Refresh, as long as it has the tool and sees the `takeout
 
 ## What happens to your photos
 
-**Google Photos wins.** Imported content follows Google, and changes made on the NAS to that content are put back.
+**Google Photos wins.** Imported content follows Google Photos, and changes made on the NAS to that content are put back.
 
 | In Google Photos | On the NAS after a Refresh |
 |---|---|
 | New photo or new Album | Added |
-| Album renamed | Renamed, not duplicated |
+| Album renamed | Renamed, not duplicated, unless its photos at least doubled: then the tool creates a new Album, and the old one stays |
 | Caption changed, or new Comments and Likes | Updated |
 | Comment deleted | Removed from the text |
 | Photo edited | Replaced by the new version, in the same Albums |
-| Date of a photo fixed | Moved to the right date, not duplicated |
+| Date of a photo fixed | Moved to the folder of its year, not duplicated. If the file holds its own date, Synology Photos may keep showing that one |
 | Photo removed from an Album | Stays in the Album |
 | Photo or Album deleted | Stays on the NAS |
 
 | On the NAS | After a Refresh |
 |---|---|
-| Photo Description changed | Put back as in Google |
+| Photo Description changed | Put back as in Google Photos |
 | Photo deleted | Sent again |
 | Album deleted | Created again |
 | Album renamed | Renamed back |
 | Your own Album, with photos from outside `Google Photos` | Left alone, except that a photo that moves keeps its place in it |
 
-So make your changes in Google Photos, not on the NAS. Nothing that was ever copied is removed from the NAS Library, except that the text follows Google.
+So make your changes in Google Photos, not on the NAS. Nothing that was ever copied is removed from the NAS Library, except that the text follows Google Photos.
 
 Two Albums with the same title stay two separate Albums.
-
-## Moving to the NAS for good
-
-If the NAS Library becomes your main place one day, stop running Refreshes. From then on, the tool does not touch the NAS, and your changes there are safe.
