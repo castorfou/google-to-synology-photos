@@ -41,6 +41,8 @@ class SyntheticPhoto:
     has_file: bool = True
     # The sidecar's geoData: (latitude, longitude, altitude). Zeros mean no position.
     geo: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    # The extension of a file whose sidecar and title have none: ".jpg".
+    file_extension: str = ""
 
     def sidecar(self, shared: list[dict] | None = None) -> dict:
         ts = str(int(self.taken.timestamp()))
@@ -119,11 +121,12 @@ class TakeoutBuilder:
         exif_date: str | None = CAMERA_DATE,
         exif_position: tuple[float, float] | None = None,
         geo: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        file_extension: str = "",
     ) -> SyntheticPhoto:
         """Add a photo to an Album; it also sits in its year folder.
 
         exif_date and exif_position are what the file itself holds; geo is what
-        the sidecar holds.
+        the sidecar holds. file_extension is for a name that has none.
         """
         photo = SyntheticPhoto(
             name,
@@ -135,6 +138,7 @@ class TakeoutBuilder:
             motion=motion,
             has_file=has_file,
             geo=geo,
+            file_extension=file_extension,
         )
         album.photos.append(photo)
         return photo
@@ -278,14 +282,16 @@ class _ExportFiles:
         ).encode()
         if not (with_media and photo.has_file):
             return
-        stem, dot, ext = photo.name.rpartition(".")
+        file_name = f"{photo.name}{photo.file_extension}"
+        stem, dot, ext = file_name.rpartition(".")
         self.files[f"{folder}/{stem}{index}{dot}{ext}"] = photo.data
         if photo.edited is not None:
             edited = f"{folder}/{stem}{self._edited_suffix}{index}{dot}{ext}"
             self.files[edited] = photo.edited
         if photo.motion:
-            self.files[f"{folder}/{stem}"] = jpeg_bytes(f"{photo.url}-video")
-            self.files[f"{folder}/{stem}~2"] = jpeg_bytes(f"{photo.url}-video-2")
+            part = f"{folder}/{stem.removesuffix('.MP')}.MP"
+            self.files[part] = jpeg_bytes(f"{photo.url}-video")
+            self.files[f"{part}~2"] = jpeg_bytes(f"{photo.url}-video-2")
 
 
 def write_album_download(

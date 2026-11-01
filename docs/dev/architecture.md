@@ -38,6 +38,7 @@ The reader lists every ZIP before it pairs anything: a media file and its sideca
 - Album folders are the folders holding a `métadonnées.json` (or `metadata.json`); its `title` is the Album title. An Album is defined by its sidecars.
 - A photo is identified by its sidecar `url`. The same photo appears in its Album folders and in its year folder (`Photos de 2013`); it is read once, uploaded once, and added to each Album.
 - A sidecar is named `<name>.supplemental-metadata.json`. When a name repeats in a folder, Google adds an index: `<name>.supplemental-metadata(1).json` goes with `IMG(1).JPG`. The index can differ from one folder to another, so a sidecar is only paired inside its own folder. Its `title` keeps the plain name.
+- A few sidecars have no media extension: `IMG.supplemental-metadata.json`, with the `title` `IMG`, goes with `IMG.jpg`. Such a sidecar is paired with the file of that name in its folder, whatever its extension, and the photo takes the extension of its file, which gives its NAS path. Only a file no other sidecar names counts, and never a Motion Photo part. With several candidates, the sidecar stays unpaired. A sidecar that has an extension only matches that extension.
 - Only photos that belong to at least one Album are imported, along with the copies an Album Download brings into an Album (see [Album Downloads](#album-downloads)).
 - The date taken is the sidecar `photoTakenTime.timestamp`, in UTC. The Caption is the sidecar `description`.
 - The position is the sidecar `geoData`. Google writes zeros there when it has no position, so `0, 0` means none.
@@ -272,7 +273,7 @@ The real client, its API calls and the behaviour measured on the DS923 are descr
 
 Tests run the import use case, or the `g2s` CLI, on synthetic data only:
 
-- `tests/takeout_builder.py` builds a synthetic Takeout Export with French names, in one or several ZIPs: Album folders with `métadonnées.json`, Album folders of sidecars only, year folders, sidecars, repeated names with their `(1)` index, `-modifié` files, Motion Photos, and photos with no file. Its media are real 1x1 JPEGs that hold a date by default, like a camera file, and the date and position in the file and in the sidecar can be set for each photo.
+- `tests/takeout_builder.py` builds a synthetic Takeout Export with French names, in one or several ZIPs: Album folders with `métadonnées.json`, Album folders of sidecars only, year folders, sidecars, repeated names with their `(1)` index, sidecars with no media extension, `-modifié` files, Motion Photos, and photos with no file. Its media are real 1x1 JPEGs that hold a date by default, like a camera file, and the date and position in the file and in the sidecar can be set for each photo.
 - `tests/test_file_metadata.py` runs ExifTool for real on tiny JPEGs and PNGs, and reads the sent files back with Pillow, so that the check does not depend on the tool that writes.
 - `tests/test_video_conversion.py` runs ffmpeg for real on tiny videos, and reads the sent files back with ffprobe and ExifTool.
 - `tests/test_resumable_runs.py` runs imports again on the same fake NAS, and stops a run at every possible write.
