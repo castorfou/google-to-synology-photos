@@ -132,4 +132,8 @@ Puis `/clear`, puis `/mattpocock-skills:implement #36`.
 
 Puis `/clear`, puis `/mattpocock-skills:implement #37`.
 
+# Nov,1 26
+
 La suite logique dans vos notes serait /clear puis /mattpocock-skills:implement #38.
+
+Pour la suite : /clear, puis /mattpocock-skills:implement #49.

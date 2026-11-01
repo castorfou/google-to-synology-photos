@@ -19,6 +19,8 @@ URL = "https://photos.google.com/photo/AF1QipSyntheticPhotoUrl0001"
 URL_2 = "https://photos.google.com/photo/AF1QipSyntheticPhotoUrl0002"
 URL_3 = "https://photos.google.com/photo/AF1QipSyntheticPhotoUrl0003"
 PHOTO_PATH = "Photos/Google Photos/2013/IMG_0001__yxk3qp.JPG"
+PHOTO_2_PATH = "Photos/Google Photos/2013/IMG_0002__d7w7p6.JPG"
+PHOTO_3_PATH = "Photos/Google Photos/2013/IMG_0003__hyyytz.JPG"
 VIDEO_PATH = "Photos/Google Photos/2013/VID__d7w7p6.mp4"
 
 
@@ -155,6 +157,26 @@ def test_an_empty_album_left_by_a_stop_is_used_once_only(tmp_path: Path) -> None
 
     assert [name for name, _ in nas.album_contents()] == ["Noël", "Été"]
     assert report.albums_created == 1
+
+
+def test_an_album_left_part_filled_by_a_stop_is_not_duplicated(tmp_path: Path) -> None:
+    takeout = TakeoutBuilder()
+    album = takeout.album("Été")
+    takeout.photo(album, "IMG_0001.JPG", URL)
+    takeout.photo(album, "IMG_0002.JPG", URL_2)
+    takeout.photo(album, "IMG_0003.JPG", URL_3)
+    export = takeout.write(tmp_path / "export")
+    nas = FakeSynologyPhotos()
+    run_import(export, nas)
+    first = nas.item_at(PHOTO_PATH)
+    assert first is not None
+    nas.delete_album(nas.albums()[0].id)
+    nas.add_to_album(nas.create_album("Été"), [first])
+
+    report = run_import(export, nas)
+
+    assert nas.album_contents() == [("Été", [PHOTO_PATH, PHOTO_2_PATH, PHOTO_3_PATH])]
+    assert report.albums_created == 0
 
 
 def test_an_album_with_the_same_title_and_other_photos_is_left_alone(

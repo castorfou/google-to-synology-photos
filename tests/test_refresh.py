@@ -13,6 +13,7 @@ from tests.takeout_builder import TakeoutBuilder
 URL = "https://photos.google.com/photo/AF1QipSyntheticPhotoUrl0001"
 URL_2 = "https://photos.google.com/photo/AF1QipSyntheticPhotoUrl0002"
 URL_3 = "https://photos.google.com/photo/AF1QipSyntheticPhotoUrl0003"
+URL_4 = "https://photos.google.com/photo/AF1QipSyntheticPhotoUrl0004"
 PHOTO_PATH = "Photos/Google Photos/2013/IMG_0001__yxk3qp.JPG"
 PHOTO_2_PATH = "Photos/Google Photos/2013/IMG_0002__d7w7p6.JPG"
 PHOTO_3_PATH = "Photos/Google Photos/2013/IMG_0003__hyyytz.JPG"
@@ -38,6 +39,47 @@ def test_an_album_renamed_in_google_photos_is_renamed_on_the_nas(
     assert report.albums_renamed == 1
     assert report.albums_created == 0
     assert "Albums renamed: 1" in report.render()
+
+
+def test_an_album_renamed_with_a_photo_added_is_not_duplicated(tmp_path: Path) -> None:
+    before = TakeoutBuilder()
+    album = before.album("Été")
+    before.photo(album, "IMG_0001.JPG", URL)
+    before.photo(album, "IMG_0002.JPG", URL_2)
+    newer = TakeoutBuilder()
+    album = newer.album("Été à la mer")
+    newer.photo(album, "IMG_0001.JPG", URL)
+    newer.photo(album, "IMG_0002.JPG", URL_2)
+    newer.photo(album, "IMG_0003.JPG", URL_3)
+    nas = FakeSynologyPhotos()
+    run_import(before.write(tmp_path / "2024-01-01"), nas)
+
+    report = run_import(newer.write(tmp_path / "2025-01-01"), nas)
+
+    assert nas.album_contents() == [
+        ("Été à la mer", [PHOTO_PATH, PHOTO_2_PATH, PHOTO_3_PATH])
+    ]
+    assert report.albums_renamed == 1
+    assert report.albums_created == 0
+
+
+def test_an_album_renamed_with_a_photo_removed_is_not_duplicated(
+    tmp_path: Path,
+) -> None:
+    before = TakeoutBuilder()
+    album = before.album("Été")
+    before.photo(album, "IMG_0001.JPG", URL)
+    before.photo(album, "IMG_0002.JPG", URL_2)
+    newer = TakeoutBuilder()
+    newer.photo(newer.album("Été à la mer"), "IMG_0001.JPG", URL)
+    nas = FakeSynologyPhotos()
+    run_import(before.write(tmp_path / "2024-01-01"), nas)
+
+    report = run_import(newer.write(tmp_path / "2025-01-01"), nas)
+
+    assert nas.album_contents() == [("Été à la mer", [PHOTO_PATH, PHOTO_2_PATH])]
+    assert report.albums_renamed == 1
+    assert report.albums_created == 0
 
 
 def test_a_rename_that_does_not_stick_is_listed_in_the_report(tmp_path: Path) -> None:
@@ -154,6 +196,108 @@ def test_albums_and_photos_deleted_in_google_photos_stay_on_the_nas(
 
     assert nas.album_contents() == [("Noël", [PHOTO_2_PATH]), ("Été", [PHOTO_PATH])]
     assert nas.item(PHOTO_PATH).description == "La plage"
+
+
+def test_a_new_album_sharing_half_of_its_photos_leaves_a_deleted_album_alone(
+    tmp_path: Path,
+) -> None:
+    before = TakeoutBuilder()
+    album = before.album("Old")
+    before.photo(album, "IMG_0001.JPG", URL)
+    before.photo(album, "IMG_0002.JPG", URL_2)
+    newer = TakeoutBuilder()
+    album = newer.album("New")
+    newer.photo(album, "IMG_0002.JPG", URL_2)
+    newer.photo(album, "IMG_0003.JPG", URL_3)
+    nas = FakeSynologyPhotos()
+    run_import(before.write(tmp_path / "2024-01-01"), nas)
+
+    report = run_import(newer.write(tmp_path / "2025-01-01"), nas)
+
+    assert nas.album_contents() == [
+        ("New", [PHOTO_2_PATH, PHOTO_3_PATH]),
+        ("Old", [PHOTO_PATH, PHOTO_2_PATH]),
+    ]
+    assert report.albums_created == 1
+    assert report.albums_renamed == 0
+
+
+def test_an_album_split_in_google_photos_keeps_its_title_on_the_nas(
+    tmp_path: Path,
+) -> None:
+    before = TakeoutBuilder()
+    album = before.album("Trip")
+    before.photo(album, "IMG_0001.JPG", URL)
+    before.photo(album, "IMG_0002.JPG", URL_2)
+    before.photo(album, "IMG_0003.JPG", URL_3)
+    newer = TakeoutBuilder()
+    newer.photo(newer.album("Trip"), "IMG_0001.JPG", URL)
+    best = newer.album("Best")
+    newer.photo(best, "IMG_0002.JPG", URL_2)
+    newer.photo(best, "IMG_0003.JPG", URL_3)
+    nas = FakeSynologyPhotos()
+    run_import(before.write(tmp_path / "2024-01-01"), nas)
+
+    report = run_import(newer.write(tmp_path / "2025-01-01"), nas)
+
+    assert nas.album_contents() == [
+        ("Best", [PHOTO_2_PATH, PHOTO_3_PATH]),
+        ("Trip", [PHOTO_PATH, PHOTO_2_PATH, PHOTO_3_PATH]),
+    ]
+    assert report.albums_created == 1
+    assert report.albums_renamed == 0
+
+
+def test_a_part_of_a_split_album_with_new_photos_keeps_the_title(
+    tmp_path: Path,
+) -> None:
+    before = TakeoutBuilder()
+    album = before.album("Trip")
+    before.photo(album, "IMG_0001.JPG", URL)
+    before.photo(album, "IMG_0002.JPG", URL_2)
+    before.photo(album, "IMG_0003.JPG", URL_3)
+    newer = TakeoutBuilder()
+    trip = newer.album("Trip")
+    newer.photo(trip, "IMG_0001.JPG", URL)
+    newer.photo(trip, "IMG_0004.JPG", URL_4)
+    best = newer.album("Best")
+    newer.photo(best, "IMG_0002.JPG", URL_2)
+    newer.photo(best, "IMG_0003.JPG", URL_3)
+    nas = FakeSynologyPhotos()
+    run_import(before.write(tmp_path / "2024-01-01"), nas)
+
+    report = run_import(newer.write(tmp_path / "2025-01-01"), nas)
+
+    assert [name for name, _ in nas.album_contents()] == ["Best", "Trip"]
+    assert report.albums_created == 1
+    assert report.albums_renamed == 0
+
+
+def test_a_rename_is_followed_rather_than_a_title_sharing_one_photo(
+    tmp_path: Path,
+) -> None:
+    before = TakeoutBuilder()
+    album = before.album("Été")
+    before.photo(album, "IMG_0001.JPG", URL)
+    shared = before.photo(album, "IMG_0002.JPG", URL_2)
+    other = before.album("Mer")
+    before.add_to_album(other, shared)
+    before.photo(other, "IMG_0003.JPG", URL_3)
+    newer = TakeoutBuilder()
+    album = newer.album("Mer")
+    newer.photo(album, "IMG_0001.JPG", URL)
+    newer.photo(album, "IMG_0002.JPG", URL_2)
+    nas = FakeSynologyPhotos()
+    run_import(before.write(tmp_path / "2024-01-01"), nas)
+
+    report = run_import(newer.write(tmp_path / "2025-01-01"), nas)
+
+    assert nas.album_contents() == [
+        ("Mer", [PHOTO_PATH, PHOTO_2_PATH]),
+        ("Mer", [PHOTO_2_PATH, PHOTO_3_PATH]),
+    ]
+    assert report.albums_renamed == 1
+    assert report.albums_created == 0
 
 
 def test_a_hand_made_album_with_a_photo_outside_the_library_is_untouched(
