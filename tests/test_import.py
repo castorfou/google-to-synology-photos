@@ -1,5 +1,7 @@
 """End-to-end import of synthetic Takeout Exports into a fake Synology Photos."""
 
+import zipfile
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -7,7 +9,8 @@ import pytest
 from google_to_synology_photos.importer import run_import
 from google_to_synology_photos.takeout import SelectedAlbumsExportError
 from tests.fake_synology import FakeSynologyPhotos
-from tests.takeout_builder import TakeoutBuilder
+from tests.takeout_builder import ROOT, TakeoutBuilder
+from tests.test_video_conversion import AVI, make_video
 
 
 URL = "https://photos.google.com/photo/AF1QipSyntheticPhotoUrl0001"
@@ -205,6 +208,178 @@ def test_a_motion_photo_is_imported_as_its_jpg_without_its_video_parts(
     assert nas.paths() == [path]
     assert nas.item(path).data == photo.data
     assert report.uploaded == 1
+
+
+def test_a_photo_whose_sidecar_has_no_extension_joins_its_album(
+    tmp_path: Path,
+) -> None:
+    # IMG_0001.jpg sits next to IMG_0001.supplemental-metadata.json.
+    takeout = TakeoutBuilder()
+    album = takeout.album("Noël", sidecars_only=True)
+    photo = takeout.photo(
+        album,
+        "IMG_0001",
+        URL,
+        taken=datetime(2016, 8, 9, 14, 30, 5, tzinfo=UTC),
+        caption="Le sapin",
+        file_extension=".jpg",
+    )
+    nas = FakeSynologyPhotos()
+
+    report = run_import(takeout.write(tmp_path / "export"), nas)
+
+    path = "Photos/Google Photos/2016/IMG_0001__yxk3qp.jpg"
+    assert nas.album_contents() == [("Noël", [path])]
+    assert nas.item(path).data == photo.data
+    assert nas.item(path).description == "Le sapin"
+    assert "Noël: IMG_0001" not in report.render()
+
+
+def test_a_video_whose_sidecar_has_no_extension_is_converted_like_any_video(
+    tmp_path: Path,
+) -> None:
+    takeout = TakeoutBuilder()
+    photo = takeout.photo(takeout.album("Noël"), "VID", URL, file_extension=".avi")
+    photo.data = make_video(tmp_path, *AVI)
+    nas = FakeSynologyPhotos()
+
+    report = run_import(takeout.write(tmp_path / "export"), nas)
+
+    assert nas.paths() == ["Photos/Google Photos/2013/VID__yxk3qp.mp4"]
+    assert report.videos_converted == 1
+
+
+def test_an_edited_photo_whose_sidecar_has_no_extension_sends_its_edited_file(
+    tmp_path: Path,
+) -> None:
+    takeout = TakeoutBuilder()
+    album = takeout.album("Noël")
+    photo = takeout.photo(album, "IMG_0001", URL, edited=True, file_extension=".jpg")
+    nas = FakeSynologyPhotos()
+
+    run_import(takeout.write(tmp_path / "export"), nas)
+
+    path = "Photos/Google Photos/2013/IMG_0001__yxk3qp.jpg"
+    assert nas.paths() == [path]
+    assert nas.item(path).data == photo.edited
+
+
+def test_a_repeated_name_with_no_extension_pairs_each_sidecar_with_its_own_file(
+    tmp_path: Path,
+) -> None:
+    takeout = TakeoutBuilder()
+    album = takeout.album("Noël", sidecars_only=True)
+    first = takeout.photo(album, "IMG_0001", URL, file_extension=".jpg")
+    second = takeout.photo(album, "IMG_0001", URL_2, file_extension=".jpg")
+    nas = FakeSynologyPhotos()
+
+    run_import(takeout.write(tmp_path / "export"), nas)
+
+    assert nas.item("Photos/Google Photos/2013/IMG_0001__yxk3qp.jpg").data == first.data
+    assert (
+        nas.item("Photos/Google Photos/2013/IMG_0001__d7w7p6.jpg").data == second.data
+    )
+
+
+def test_a_second_run_writes_nothing_new_for_a_sidecar_with_no_extension(
+    tmp_path: Path,
+) -> None:
+    takeout = TakeoutBuilder()
+    album = takeout.album("Noël")
+    takeout.photo(album, "IMG_0001", URL, caption="Le sapin", file_extension=".jpg")
+    export = takeout.write(tmp_path / "export")
+    nas = FakeSynologyPhotos()
+    run_import(export, nas)
+
+    report = run_import(export, nas)
+
+    assert report.uploaded == 0
+    assert report.replaced == 0
+    assert report.descriptions_written == 0
+    assert report.descriptions_rewritten == 0
+    assert report.failed_writes == []
+
+
+def test_a_sidecar_with_no_extension_leaves_the_file_of_another_sidecar_alone(
+    tmp_path: Path,
+) -> None:
+    # IMG_0001.jpg has its own sidecar, and the other photo has no file.
+    takeout = TakeoutBuilder()
+    album = takeout.album("Noël")
+    takeout.photo(album, "IMG_0001.jpg", URL)
+    takeout.photo(album, "IMG_0001", URL_2, has_file=False)
+    nas = FakeSynologyPhotos()
+
+    report = run_import(takeout.write(tmp_path / "export"), nas)
+
+    assert nas.paths() == ["Photos/Google Photos/2013/IMG_0001__yxk3qp.jpg"]
+    assert "- Noël: IMG_0001\n" in report.render()
+
+
+def test_a_sidecar_with_an_extension_does_not_match_another_extension(
+    tmp_path: Path,
+) -> None:
+    takeout = TakeoutBuilder()
+    album = takeout.album("Noël")
+    takeout.photo(album, "IMG_0001.jpg", URL, has_file=False)
+    takeout.photo(album, "IMG_0001.mp4", URL_2)
+    nas = FakeSynologyPhotos()
+
+    report = run_import(takeout.write(tmp_path / "export"), nas)
+
+    assert nas.paths() == ["Photos/Google Photos/2013/IMG_0001__d7w7p6.mp4"]
+    assert "- Noël: IMG_0001.jpg" in report.render()
+
+
+def test_a_sidecar_with_no_extension_skips_the_video_parts_of_a_motion_photo(
+    tmp_path: Path,
+) -> None:
+    takeout = TakeoutBuilder()
+    album = takeout.album("Noël")
+    photo = takeout.photo(album, "PXL_0001", URL, motion=True, file_extension=".jpg")
+    nas = FakeSynologyPhotos()
+
+    run_import(takeout.write(tmp_path / "export"), nas)
+
+    path = "Photos/Google Photos/2013/PXL_0001__yxk3qp.jpg"
+    assert nas.paths() == [path]
+    assert nas.item(path).data == photo.data
+
+
+def test_a_sidecar_with_no_extension_takes_no_file_when_two_could_be_its_own(
+    tmp_path: Path,
+) -> None:
+    takeout = TakeoutBuilder()
+    album = takeout.album("Noël")
+    takeout.photo(album, "IMG_0001", URL, file_extension=".jpg")
+    export = takeout.write(tmp_path / "export")
+    with zipfile.ZipFile(next(export.glob("*.zip")), "a") as zf:
+        zf.writestr(f"{ROOT}/Noël/IMG_0001.mov", b"video")
+        zf.writestr(f"{ROOT}/Photos de\xa02013/IMG_0001.mov", b"video")
+    nas = FakeSynologyPhotos()
+
+    report = run_import(export, nas)
+
+    assert nas.paths() == []
+    assert "- Noël: IMG_0001\n" in report.render()
+
+
+def test_a_file_with_the_exact_name_of_a_sidecar_stays_its_file(
+    tmp_path: Path,
+) -> None:
+    takeout = TakeoutBuilder()
+    album = takeout.album("Noël")
+    photo = takeout.photo(album, "IMG_0001", URL, file_extension=".jpg")
+    export = takeout.write(tmp_path / "export")
+    with zipfile.ZipFile(next(export.glob("*.zip")), "a") as zf:
+        zf.writestr(f"{ROOT}/Noël/IMG_0001", b"exact")
+        zf.writestr(f"{ROOT}/Photos de\xa02013/IMG_0001", b"exact")
+    nas = FakeSynologyPhotos()
+
+    run_import(export, nas)
+
+    assert nas.paths() == ["Photos/Google Photos/2013/IMG_0001__yxk3qp"]
+    assert nas.item("Photos/Google Photos/2013/IMG_0001__yxk3qp").data != photo.data
 
 
 def test_an_album_photo_whose_file_is_not_in_the_export_is_reported(
