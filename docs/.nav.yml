@@ -2,5 +2,4 @@ nav:
   - Accueil: index.md
   - Guides utilisateurs: user/
   - Guides développeurs: dev/
-  - Cheatsheets: cheatsheets/
 ignore: "bonnes_pratiques.md"
