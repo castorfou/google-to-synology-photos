@@ -16,7 +16,7 @@ from google_to_synology_photos.media import ConversionFailedError, MediaPreparer
 from google_to_synology_photos.paths import LIBRARY_ROOT, identity_of_path, nas_path
 from google_to_synology_photos.report import Report
 from google_to_synology_photos.synology import NasAlbum, SynologyPhotos
-from google_to_synology_photos.takeout import Album, read_export
+from google_to_synology_photos.takeout import Album, Photo, read_export
 
 
 # Told the step, the number of the thing it starts, and how many there are.
@@ -29,11 +29,12 @@ class Snapshot:
 
     items holds the path and id of each item of the NAS Library, by identity;
     albums holds the items of every Album made only of NAS Library photos: the
-    others are the Household's own.
+    others are the Household's own, and own_albums holds their items.
     """
 
     items: dict[str, tuple[str, int]]
     albums: dict[NasAlbum, set[int]]
+    own_albums: dict[NasAlbum, set[int]]
 
 
 def take_snapshot(nas: SynologyPhotos) -> Snapshot:
@@ -44,9 +45,9 @@ def take_snapshot(nas: SynologyPhotos) -> Snapshot:
     }
     library = set(listing.values())
     albums = {album: set(nas.album_items(album.id)) for album in nas.albums()}
-    return Snapshot(
-        items, {album: held for album, held in albums.items() if held <= library}
-    )
+    ours = {album: held for album, held in albums.items() if held <= library}
+    own = {album: held for album, held in albums.items() if album not in ours}
+    return Snapshot(items, ours, own)
 
 
 def pair_albums(
@@ -90,16 +91,99 @@ def _no_progress(step: str, number: int, total: int) -> None:
     """Show nothing."""
 
 
+def _send(
+    photo: Photo,
+    media: MediaPreparer,
+    nas: SynologyPhotos,
+    report: Report,
+    replacing: str | None,
+) -> tuple[str, int] | None:
+    """Send photo; return its path and id, or None if it did not reach the NAS.
+
+    It is overwritten at the path it is replacing, and never at any other.
+    """
+    try:
+        prepared = media.prepare(photo)
+    except ConversionFailedError:
+        # Not sent as it is: later runs would count it as on the NAS.
+        report.failed_conversions.append(photo.member)
+        return None
+    path = nas_path(photo, prepared.extension)
+    if not prepared.complete:
+        report.metadata_not_written.append(path)
+    send = nas.overwrite if path == replacing else nas.upload
+    item_id = send(path, prepared.data)
+    if nas.item_at(path) != item_id:
+        report.failed_writes.append(f"Upload of {path}")
+        return None
+    if prepared.extension is not None:
+        report.videos_converted += 1
+    return path, item_id
+
+
+def _file_changed(earlier: Photo, photo: Photo) -> bool:
+    """Tell whether photo needs another file than the previous export gave.
+
+    The date counts: it is written into the files that lack one.
+    """
+    return (earlier.taken, earlier.size, earlier.crc) != (
+        photo.taken,
+        photo.size,
+        photo.crc,
+    )
+
+
+def _take_over(
+    old: tuple[str, int],
+    new: tuple[str, int],
+    snapshot: Snapshot,
+    nas: SynologyPhotos,
+    report: Report,
+) -> bool:
+    """Put the new item in the Albums of the old one, then remove the old one.
+
+    Only this adds to the Household's own Albums: they would lose the photo. The
+    old item goes last and only if all went well, so that a stop loses nothing.
+    Tells whether all went well.
+    """
+    (old_path, old_id), (path, item_id) = old, new
+    stuck = True
+    for album, held in (snapshot.albums | snapshot.own_albums).items():
+        if old_id == item_id or old_id not in held:
+            continue
+        if item_id not in held:
+            nas.add_to_album(album.id, [item_id])
+            if item_id not in nas.album_items(album.id):
+                report.failed_writes.append(f"Photos of Album {album.name!r}")
+                stuck = False
+                continue
+            held.add(item_id)
+        held.discard(old_id)
+    if not stuck or old_path == path:
+        return stuck
+    nas.delete_item(old_id)
+    if nas.item_at(old_path) is not None:
+        report.failed_writes.append(f"Removal of {old_path}")
+        return False
+    return True
+
+
 def run_import(
-    export_dir: Path, nas: SynologyPhotos, progress: Progress = _no_progress
+    export_dir: Path,
+    nas: SynologyPhotos,
+    progress: Progress = _no_progress,
+    previous: Path | None = None,
 ) -> Report:
     """Build the NAS Library from the Takeout Export in export_dir.
 
-    Uploads the photos the NAS lacks, creates, renames or grows the Albums, sets
-    the Photo Descriptions that differ, and returns the report of the run.
+    Uploads the photos the NAS lacks, replaces the files that differ from the
+    previous Takeout Export and moves those it put elsewhere, creates, renames or
+    grows the Albums, sets the Photo Descriptions that differ, and returns the
+    report of the run.
     """
     report = Report()
     export = read_export(export_dir)
+    earlier_photos = {} if previous is None else read_export(previous).photos
     report.no_file = [
         f"{album.title}: {name}" for album in export.albums for name in album.no_file
     ]
@@ -116,28 +200,39 @@ def run_import(
         snapshot = take_snapshot(nas)
         for number, (url, photo) in enumerate(export.photos.items(), start=1):
             progress("Photos and videos", number, len(export.photos))
-            known = snapshot.items.get(identity_of_path(nas_path(photo)))
-            if known is not None:
-                paths[url], item_ids[url] = known
+            identity = identity_of_path(nas_path(photo))
+            known = snapshot.items.get(identity)
+            earlier = earlier_photos.get(url)
+            was = identity if earlier is None else identity_of_path(nas_path(earlier))
+            # Still there after a move stopped halfway: the move goes on.
+            left_behind = None if was == identity else snapshot.items.get(was)
+            replacing = (
+                known is not None
+                and earlier is not None
+                and was == identity
+                and _file_changed(earlier, photo)
+            )
+            if known is None or replacing:
+                sent = _send(photo, media, nas, report, known[0] if known else None)
+                if sent is None:
+                    # What is on the NAS stays, in its Albums and with its text.
+                    if kept := known or left_behind:
+                        paths[url], item_ids[url] = kept
+                    continue
+            else:
+                sent = known
+            paths[url], item_ids[url] = sent
+            old = left_behind or (known if replacing else None)
+            if old is not None and not _take_over(old, sent, snapshot, nas, report):
+                continue
+            if left_behind is not None:
+                report.moved += 1
+            elif replacing:
+                report.replaced += 1
+            elif known is not None:
                 report.already_on_nas += 1
-                continue
-            try:
-                prepared = media.prepare(photo)
-            except ConversionFailedError:
-                # Not sent as it is: later runs would count it as on the NAS.
-                report.failed_conversions.append(photo.member)
-                continue
-            path = paths[url] = nas_path(photo, prepared.extension)
-            if not prepared.complete:
-                report.metadata_not_written.append(path)
-            item_id = nas.upload(path, prepared.data)
-            if nas.item_at(path) != item_id:
-                report.failed_writes.append(f"Upload of {path}")
-                continue
-            item_ids[url] = item_id
-            report.uploaded += 1
-            if prepared.extension is not None:
-                report.videos_converted += 1
+            else:
+                report.uploaded += 1
 
     for album in export.albums:
         # What is not on the NAS holds no Album text: it goes to the next photo.

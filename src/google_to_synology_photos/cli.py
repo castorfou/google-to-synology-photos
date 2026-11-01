@@ -23,7 +23,7 @@ from google_to_synology_photos.login import (
 from google_to_synology_photos.media import ExifToolMissingError, FfmpegMissingError
 from google_to_synology_photos.synology import SynologyError, SynologyPhotos
 from google_to_synology_photos.synology_client import SynologyPhotosClient
-from google_to_synology_photos.takeout import SelectedAlbumsExportError
+from google_to_synology_photos.takeout import SelectedAlbumsExportError, older_export
 
 
 REPORT_NAME = "report.md"
@@ -86,6 +86,12 @@ def main(
         "import", help="Import a Takeout Export (a folder of ZIPs)."
     )
     import_cmd.add_argument("export", type=Path, help="Folder of the Takeout ZIPs.")
+    import_cmd.add_argument(
+        "--previous",
+        type=Path,
+        help="Export to compare with, to find changed files. "
+        "Default: the newest older export next to it.",
+    )
     args = parser.parse_args(argv)
 
     if args.command == "login":
@@ -96,9 +102,14 @@ def main(
     export: Path = args.export
     if not export.is_dir():
         parser.error(f"{export} is not a folder")
+    previous: Path | None = args.previous
+    if previous is None:
+        previous = older_export(export)
+    elif not previous.is_dir():
+        parser.error(f"{previous} is not a folder")
 
     try:
-        report = run_import(export, connect(False), _show_progress).render()
+        report = run_import(export, connect(False), _show_progress, previous).render()
     except (
         SelectedAlbumsExportError,
         ExifToolMissingError,

@@ -11,6 +11,8 @@ class Report:
     """What a run did, and what did not reach the NAS Library."""
 
     uploaded: int = 0
+    replaced: int = 0
+    moved: int = 0
     already_on_nas: int = 0
     videos_converted: int = 0
     albums_created: int = 0
@@ -31,6 +33,8 @@ class Report:
             "# Import report",
             "",
             f"- Photos and videos uploaded: {self.uploaded}",
+            f"- Files replaced: {self.replaced}",
+            f"- Files moved: {self.moved}",
             f"- Already on the NAS: {self.already_on_nas}",
             f"- Videos converted: {self.videos_converted}",
             f"- Albums created: {self.albums_created}",

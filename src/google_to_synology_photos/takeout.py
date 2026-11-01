@@ -44,7 +44,11 @@ class Position:
 
 @dataclass(frozen=True)
 class Photo:
-    """A photo or video of the export, identified by its sidecar url."""
+    """A photo or video of the export, identified by its sidecar url.
+
+    size and crc are those of its media file in the ZIP: they tell whether the
+    file changed from one export to the next without reading it.
+    """
 
     url: str
     name: str
@@ -53,6 +57,8 @@ class Photo:
     caption: str
     zip_path: Path
     member: str
+    size: int
+    crc: int
 
     def read(self) -> bytes:
         """Return the bytes of the media file, read from its ZIP."""
@@ -185,6 +191,20 @@ def _place_root_comments(
     return unknown
 
 
+def older_export(export_dir: Path) -> Path | None:
+    """Return the newest Takeout Export older than export_dir, next to it.
+
+    Exports are folders of ZIPs named by date, so their names sort by age.
+    """
+    export = export_dir.resolve()
+    older = [
+        folder
+        for folder in export.parent.iterdir()
+        if folder.is_dir() and folder.name < export.name and any(folder.glob("*.zip"))
+    ]
+    return max(older, key=lambda folder: folder.name, default=None)
+
+
 def read_export(export_dir: Path) -> Export:
     """Read every ZIP of export_dir into the Albums and their photos (by url).
 
@@ -195,6 +215,7 @@ def read_export(export_dir: Path) -> Export:
     Raises SelectedAlbumsExportError on an export of selected Albums.
     """
     zip_of: dict[str, Path] = {}
+    info_of: dict[str, zipfile.ZipInfo] = {}
     album_folders: dict[str, dict] = {}
     sidecars: list[tuple[str, re.Match[str], dict]] = []
     root_comments: list[dict] = []
@@ -211,6 +232,7 @@ def read_export(export_dir: Path) -> Export:
                     root_comments = json.loads(zf.read(member))["sharedAlbumComments"]
                 else:
                     zip_of[member] = zip_path
+                    info_of[member] = zf.getinfo(member)
 
     sidecar_of: dict[str, dict] = {}
     original_of: dict[str, str] = {}
@@ -243,6 +265,8 @@ def read_export(export_dir: Path) -> Export:
                 caption=sidecar.get("description", ""),
                 zip_path=zip_of[media],
                 member=media,
+                size=info_of[media].file_size,
+                crc=info_of[media].CRC,
             )
 
     photo_reactions: dict[str, dict[str, Reactions]] = {}
