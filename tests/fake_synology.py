@@ -39,6 +39,9 @@ class FakeSynologyPhotos:
         self.descriptions_stick = True
         # Set to False to make Album renames silently not stick.
         self.album_names_stick = True
+        # Set to False to make an overwrite give the item a new id, out of its
+        # Albums. The DS923 keeps the id: the import does not rely on it.
+        self.overwrite_keeps_id = True
         self.writes = 0
         self.writes_left: int | None = None
 
@@ -69,7 +72,15 @@ class FakeSynologyPhotos:
         item_id = self.upload(path, data)
         self._items[item_id].data = data
         self._items[item_id].description = ""
-        return item_id
+        if self.overwrite_keeps_id:
+            return item_id
+        item = self._items.pop(item_id)
+        for held in self._album_items.values():
+            if item_id in held:
+                held.remove(item_id)
+        item.id = self._new_id()
+        self._items[item.id] = item
+        return item.id
 
     def folder_items(self, folder: str) -> dict[str, int]:
         prefix = f"{folder}/"

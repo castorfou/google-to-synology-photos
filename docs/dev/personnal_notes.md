@@ -123,3 +123,7 @@ La suite recommandée est `/clear`, puis `/mattpocock-skills:implement #32`.
 Puis `/clear`, puis `/mattpocock-skills:implement #31`.
 
 Puis `/clear`, puis `/mattpocock-skills:implement #33`.
+
+Puis `/clear`, puis `/mattpocock-skills:implement #34`.
+
+Puis `/clear`, puis `/mattpocock-skills:implement #35`.

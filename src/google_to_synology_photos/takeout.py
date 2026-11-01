@@ -13,6 +13,9 @@ from pathlib import Path
 SIDECAR = re.compile(r"(?P<name>.+)\.supplemental-metadata(?P<index>\(\d+\))?\.json")
 # An edited photo has no sidecar of its own: it shares the original's.
 EDITED_SUFFIXES = ("-modifié", "-edited")
+EXPORT_FOLDER = re.compile(r"\d{4}-\d{2}-\d{2}")
+# In the folder of an export whose run reached its end with nothing left to retry.
+FINISHED_MARK = ".g2s-done"
 ALBUM_METADATA_NAMES = ("métadonnées.json", "metadata.json")
 HEART = "❤️"
 ROOT_COMMENTS_NAMES = (
@@ -44,7 +47,11 @@ class Position:
 
 @dataclass(frozen=True)
 class Photo:
-    """A photo or video of the export, identified by its sidecar url."""
+    """A photo or video of the export, identified by its sidecar url.
+
+    size and crc are those of its media file in the ZIP: they tell whether the
+    file changed from one export to the next without reading it.
+    """
 
     url: str
     name: str
@@ -53,11 +60,21 @@ class Photo:
     caption: str
     zip_path: Path
     member: str
+    size: int
+    crc: int
 
     def read(self) -> bytes:
         """Return the bytes of the media file, read from its ZIP."""
         with zipfile.ZipFile(self.zip_path) as zf:
             return zf.read(self.member)
+
+    def needs_new_file(self, earlier: "Photo") -> bool:
+        """Tell whether this photo needs another file than it had in an export.
+
+        The date counts: it is written into the files that lack one.
+        """
+        ours = (self.taken, self.size, self.crc)
+        return ours != (earlier.taken, earlier.size, earlier.crc)
 
 
 @dataclass(frozen=True)
@@ -185,6 +202,39 @@ def _place_root_comments(
     return unknown
 
 
+def is_finished(export_dir: Path) -> bool:
+    """Tell whether a run on this export reached its end."""
+    return (export_dir / FINISHED_MARK).exists()
+
+
+def mark_finished(export_dir: Path) -> None:
+    """Note that a run on this export reached its end."""
+    (export_dir / FINISHED_MARK).touch()
+
+
+def previous_export(export_dir: Path) -> Path | None:
+    """Return the Takeout Export to compare export_dir with, next to it, or None.
+
+    A finished export has nothing left to replace: None. Otherwise it is the
+    newest finished older export, or failing that the newest older one: the
+    changes of an export left unfinished have not all reached the NAS.
+
+    Exports are folders of ZIPs named YYYY-MM-DD, so their names sort by age.
+    """
+    export = export_dir.resolve()
+    if is_finished(export):
+        return None
+    older = [
+        folder
+        for folder in export.parent.iterdir()
+        if EXPORT_FOLDER.fullmatch(folder.name)
+        and folder.name < export.name
+        and any(folder.glob("*.zip"))
+    ]
+    finished = [folder for folder in older if is_finished(folder)]
+    return max(finished or older, key=lambda folder: folder.name, default=None)
+
+
 def read_export(export_dir: Path) -> Export:
     """Read every ZIP of export_dir into the Albums and their photos (by url).
 
@@ -195,6 +245,7 @@ def read_export(export_dir: Path) -> Export:
     Raises SelectedAlbumsExportError on an export of selected Albums.
     """
     zip_of: dict[str, Path] = {}
+    info_of: dict[str, zipfile.ZipInfo] = {}
     album_folders: dict[str, dict] = {}
     sidecars: list[tuple[str, re.Match[str], dict]] = []
     root_comments: list[dict] = []
@@ -211,6 +262,7 @@ def read_export(export_dir: Path) -> Export:
                     root_comments = json.loads(zf.read(member))["sharedAlbumComments"]
                 else:
                     zip_of[member] = zip_path
+                    info_of[member] = zf.getinfo(member)
 
     sidecar_of: dict[str, dict] = {}
     original_of: dict[str, str] = {}
@@ -243,6 +295,8 @@ def read_export(export_dir: Path) -> Export:
                 caption=sidecar.get("description", ""),
                 zip_path=zip_of[media],
                 member=media,
+                size=info_of[media].file_size,
+                crc=info_of[media].CRC,
             )
 
     photo_reactions: dict[str, dict[str, Reactions]] = {}
