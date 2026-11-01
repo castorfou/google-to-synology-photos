@@ -518,3 +518,92 @@ def test_g2s_refuses_a_previous_export_that_does_not_exist(tmp_path: Path) -> No
         )
 
     assert stop.value.code != 0
+
+
+def replaced_files(export: Path) -> str:
+    """The line of the report next to export that counts the files replaced."""
+    report = (export.parent / "report.md").read_text(encoding="utf-8")
+    return next(line for line in report.splitlines() if "Files replaced" in line)
+
+
+def test_g2s_does_nothing_on_an_export_it_finished(tmp_path: Path) -> None:
+    first = edited_export(tmp_path / "2024-01-01")
+    second = edited_export(tmp_path / "2025-01-01", edited=True)
+    nas = FakeSynologyPhotos()
+    main(["import", str(first)], connect=lambda ask_again: nas)
+    main(["import", str(second)], connect=lambda ask_again: nas)
+    assert replaced_files(second) == "- Files replaced: 1"
+    nas.writes = 0
+
+    main(["import", str(second)], connect=lambda ask_again: nas)
+
+    assert nas.writes == 0
+    assert replaced_files(second) == "- Files replaced: 0"
+
+
+def test_g2s_goes_on_replacing_after_a_stop(tmp_path: Path) -> None:
+    first = edited_export(tmp_path / "2024-01-01")
+    second = edited_export(tmp_path / "2025-01-01", edited=True)
+    nas = FakeSynologyPhotos()
+    main(["import", str(first)], connect=lambda ask_again: nas)
+    nas.writes_left = 0
+    with pytest.raises(SystemExit):
+        main(["import", str(second)], connect=lambda ask_again: nas)
+    nas.writes_left = None
+
+    main(["import", str(second)], connect=lambda ask_again: nas)
+
+    assert replaced_files(second) == "- Files replaced: 1"
+
+
+def test_a_change_of_an_export_left_unfinished_is_not_lost(tmp_path: Path) -> None:
+    first = edited_export(tmp_path / "2024-01-01")
+    unfinished = edited_export(tmp_path / "2024-07-01", edited=True)
+    latest = edited_export(tmp_path / "2025-01-01", edited=True)
+    nas = FakeSynologyPhotos()
+    main(["import", str(first)], connect=lambda ask_again: nas)
+    nas.writes_left = 0
+    with pytest.raises(SystemExit):
+        main(["import", str(unfinished)], connect=lambda ask_again: nas)
+    nas.writes_left = None
+
+    main(["import", str(latest)], connect=lambda ask_again: nas)
+
+    assert replaced_files(latest) == "- Files replaced: 1"
+
+
+def test_an_export_with_a_failed_write_is_not_finished(tmp_path: Path) -> None:
+    def export(folder: str, data: bytes) -> Path:
+        return video_export(tmp_path / folder, data)
+
+    first = export("2024-01-01", make_video(tmp_path, *AVI))
+    second = export("2025-01-01", b"not a video")
+    picture = ("-f", "lavfi", "-i", "testsrc=size=80x60:rate=25:duration=0.2")
+    third = export("2026-01-01", make_video(tmp_path, *AVI, source=picture))
+    nas = FakeSynologyPhotos()
+    main(["import", str(first)], connect=lambda ask_again: nas)
+    main(["import", str(second)], connect=lambda ask_again: nas)
+    sent = nas.item(VIDEO_PATH).data
+
+    main(["import", str(third)], connect=lambda ask_again: nas)
+
+    assert nas.item(VIDEO_PATH).data != sent
+    assert not (second / ".g2s-done").exists()
+    assert (third / ".g2s-done").exists()
+
+
+def test_a_previous_export_given_is_used_even_on_a_finished_export(
+    tmp_path: Path,
+) -> None:
+    first = edited_export(tmp_path / "2024-01-01")
+    second = edited_export(tmp_path / "2025-01-01", edited=True)
+    nas = FakeSynologyPhotos()
+    main(["import", str(first)], connect=lambda ask_again: nas)
+    main(["import", str(second)], connect=lambda ask_again: nas)
+
+    main(
+        ["import", str(second), "--previous", str(first)],
+        connect=lambda ask_again: nas,
+    )
+
+    assert replaced_files(second) == "- Files replaced: 1"

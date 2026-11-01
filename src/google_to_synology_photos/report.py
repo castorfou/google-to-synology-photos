@@ -27,6 +27,11 @@ class Report:
     no_file: list[str] = field(default_factory=list)
     orphan_comments: list[str] = field(default_factory=list)
 
+    @property
+    def finished(self) -> bool:
+        """Tell whether the run left nothing to try again."""
+        return not (self.failed_writes or self.failed_conversions)
+
     def render(self) -> str:
         """Return the report as Markdown."""
         lines = [

@@ -14,6 +14,8 @@ SIDECAR = re.compile(r"(?P<name>.+)\.supplemental-metadata(?P<index>\(\d+\))?\.j
 # An edited photo has no sidecar of its own: it shares the original's.
 EDITED_SUFFIXES = ("-modifié", "-edited")
 EXPORT_FOLDER = re.compile(r"\d{4}-\d{2}-\d{2}")
+# In the folder of an export whose run reached its end with nothing left to retry.
+FINISHED_MARK = ".g2s-done"
 ALBUM_METADATA_NAMES = ("métadonnées.json", "metadata.json")
 HEART = "❤️"
 ROOT_COMMENTS_NAMES = (
@@ -200,12 +202,28 @@ def _place_root_comments(
     return unknown
 
 
-def older_export(export_dir: Path) -> Path | None:
-    """Return the newest Takeout Export older than export_dir, next to it.
+def is_finished(export_dir: Path) -> bool:
+    """Tell whether a run on this export reached its end."""
+    return (export_dir / FINISHED_MARK).exists()
+
+
+def mark_finished(export_dir: Path) -> None:
+    """Note that a run on this export reached its end."""
+    (export_dir / FINISHED_MARK).touch()
+
+
+def previous_export(export_dir: Path) -> Path | None:
+    """Return the Takeout Export to compare export_dir with, next to it, or None.
+
+    A finished export has nothing left to replace: None. Otherwise it is the
+    newest finished older export, or failing that the newest older one: the
+    changes of an export left unfinished have not all reached the NAS.
 
     Exports are folders of ZIPs named YYYY-MM-DD, so their names sort by age.
     """
     export = export_dir.resolve()
+    if is_finished(export):
+        return None
     older = [
         folder
         for folder in export.parent.iterdir()
@@ -213,7 +231,8 @@ def older_export(export_dir: Path) -> Path | None:
         and folder.name < export.name
         and any(folder.glob("*.zip"))
     ]
-    return max(older, key=lambda folder: folder.name, default=None)
+    finished = [folder for folder in older if is_finished(folder)]
+    return max(finished or older, key=lambda folder: folder.name, default=None)
 
 
 def read_export(export_dir: Path) -> Export:

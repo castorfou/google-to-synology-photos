@@ -8,12 +8,12 @@ All code lives in `src/google_to_synology_photos/`.
 
 | Module | Role |
 |---|---|
-| `cli.py` | The `g2s` command: `g2s login` and `g2s import <export folder>`. Finds the previous export, connects to the NAS, runs the import, shows progress, prints the report and writes `report.md`. |
+| `cli.py` | The `g2s` command: `g2s login` and `g2s import <export folder>`. Finds the previous export, marks a finished export, connects to the NAS, runs the import, shows progress, prints the report and writes `report.md`. |
 | `login.py` | Login to the NAS as the NAS Account: what is asked, and what is kept where. |
 | `dsm.py` | Transport to the DSM Web API: login, calls, multipart uploads, TLS. |
 | `synology_client.py` | The real Synology Photos client, over the `SYNO.Foto.*` Web API. |
 | `importer.py` | The import use case, `run_import(export_dir, nas, progress, previous) -> Report`. The only entry the CLI calls, and the test seam. Takes the snapshot of the NAS Library and pairs the Albums. |
-| `takeout.py` | Takeout reader. Reads every ZIP of the export in place, picks the file of each photo, and returns the photos by `url`, the Albums with their Comments and Likes, and the orphan Comments. Refuses an export of selected Albums. Finds the export older than another. |
+| `takeout.py` | Takeout reader. Reads every ZIP of the export in place, picks the file of each photo, and returns the photos by `url`, the Albums with their Comments and Likes, and the orphan Comments. Refuses an export of selected Albums. Finds the export to compare with, and holds the mark of a finished export. |
 | `media.py` | Media preparer: writes into a photo the date and position it lacks, with ExifTool, and converts the videos Synology Photos cannot play, with ffmpeg. |
 | `paths.py` | NAS path rule. |
 | `description.py` | Photo Description builder. Pure. Holds the layout of the text. |
@@ -144,12 +144,13 @@ The **identity** of a photo on the NAS is its path without the extension, so a c
 5. Set each Photo Description that differs from the text on the NAS. An empty text clears what is there.
 6. Each write is read back right after it is made. A write that does not stick is listed in the report under *Writes that did not stick*.
 7. The CLI prints the report and writes it to `report.md` in the folder that holds the export folder (`takeout/report.md` for `takeout/2024-01-01/`).
+8. When the run left nothing to try again, the CLI marks the export as finished (see [Finished exports](#finished-exports)).
 
 Progress goes to the standard error, one line per step, as `<step>: <number>/<total>`.
 
 ### Running again
 
-A run keeps no state file. It writes only what the snapshot shows as missing, so a second run on the same export makes no write, and a run stopped at any point continues from any computer. When the connection is lost, the CLI says to run `g2s` again, and no report is written.
+A run keeps no record of the NAS Library. It writes only what the snapshot shows as missing, so a second run on the same export makes no write, and a run stopped at any point continues from any computer. When the connection is lost, the CLI says to run `g2s` again, and no report is written.
 
 The snapshot holds every item under `Photos/Google Photos/`, and every normal Album made only of those items, with its items. An Album holding any other photo is the Household's own: a run never pairs, renames or grows it. The only exception is a photo that moves, whose new item takes the place of the old one there. An empty Album counts as made of NAS Library photos.
 
@@ -174,7 +175,7 @@ The report counts *Albums renamed*, and *Photo Descriptions rewritten* apart fro
 
 A file on the NAS cannot be compared with the export: ExifTool adds the date, conversion changes everything, and Synology Photos writes the Photo Description back into JPGs. A Refresh therefore compares the export with the previous one, photo by photo, by `url`.
 
-**Which previous export.** `--previous` gives it. By default it is the newest folder next to the export that holds ZIPs and is named `YYYY-MM-DD`, with a name that sorts before the export's. With no previous export, nothing is overwritten and nothing is removed: a photo whose date changed is uploaded at its new path, next to the old item.
+**Which previous export.** `--previous` gives it. By default it is found among the folders next to the export that hold ZIPs and are named `YYYY-MM-DD`, with a name that sorts before the export's: the newest finished one, or failing that the newest one. A finished export is compared with nothing. With no previous export, nothing is overwritten and nothing is removed: a photo whose date changed is uploaded at its new path, next to the old item.
 
 **Replaced.** A photo whose chosen file changed (size or CRC in the ZIP, which also covers a new `-modifié` file) or whose date changed inside its year is prepared again and overwritten at its path. The date counts because it is written into the files that lack one. The overwrite clears the Photo Description, so the text step writes it again. Only these videos are converted again. If the overwrite gives the item a new id, the new item joins every Album of the old one.
 
@@ -182,7 +183,14 @@ A file on the NAS cannot be compared with the export: ExifTool adds the date, co
 
 **Failure.** A changed video that fails to convert leaves the old file on the NAS, in its Albums and with its text.
 
-**Running again.** A move is found from the NAS: the old item is gone, or the move goes on from where it stopped. A replacement cannot be seen on the NAS, so a run started again on the same pair of exports replaces the same files again, converts the same videos again and rewrites their Photo Descriptions. The Library ends the same. The next Refresh compares with this export, so these files are then unchanged. For the same reason, a change is only seen between the two exports compared: a Refresh that stopped has to be finished before the next export is imported.
+**Running again.** A move is found from the NAS: the old item is gone, or the move goes on from where it stopped. A replacement cannot be seen on the NAS, so a run started again after a stop replaces the same files again, converts the same videos again and rewrites their Photo Descriptions. The Library ends the same. `--previous` always applies, so it does the same on a finished export.
+
+#### Finished exports
+
+A replacement leaves no trace on the NAS, so the export folder holds the only record of one: an empty file `.g2s-done`, written by the CLI at the end of a run with nothing under *Writes that did not stick* and *Videos that failed to convert*. It sits with the export, so any computer that reads the export folder sees it, and losing it only brings back the comparison with the newest older export.
+
+- A run on a finished export has nothing to replace, so a second run makes no write.
+- A later export is compared with the newest finished one, so the changes of an export left unfinished are not lost. A change that such an export replaced on the NAS and that Google Photos undid afterwards stays on the NAS, because the two exports compared agree.
 
 The report counts *Files replaced* and *Files moved*.
 

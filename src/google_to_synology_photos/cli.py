@@ -23,7 +23,11 @@ from google_to_synology_photos.login import (
 from google_to_synology_photos.media import ExifToolMissingError, FfmpegMissingError
 from google_to_synology_photos.synology import SynologyError, SynologyPhotos
 from google_to_synology_photos.synology_client import SynologyPhotosClient
-from google_to_synology_photos.takeout import SelectedAlbumsExportError, older_export
+from google_to_synology_photos.takeout import (
+    SelectedAlbumsExportError,
+    mark_finished,
+    previous_export,
+)
 
 
 REPORT_NAME = "report.md"
@@ -90,7 +94,7 @@ def main(
         "--previous",
         type=Path,
         help="Export to compare with, to find changed files. "
-        "Default: the newest older export next to it.",
+        "Default: the newest older export next to it that g2s finished.",
     )
     args = parser.parse_args(argv)
 
@@ -104,12 +108,12 @@ def main(
         parser.error(f"{export} is not a folder")
     previous: Path | None = args.previous
     if previous is None:
-        previous = older_export(export)
+        previous = previous_export(export)
     elif not previous.is_dir():
         parser.error(f"{previous} is not a folder")
 
     try:
-        report = run_import(export, connect(False), _show_progress, previous).render()
+        report = run_import(export, connect(False), _show_progress, previous)
     except (
         SelectedAlbumsExportError,
         ExifToolMissingError,
@@ -127,7 +131,10 @@ def main(
             f"g2s: the run stopped ({error}). Run g2s again: it continues where "
             "it stopped."
         ) from error
-    print(report)
+    text = report.render()
+    print(text)
     # The report sits next to the export folder, beside the other exports.
-    (export.resolve().parent / REPORT_NAME).write_text(report, encoding="utf-8")
+    (export.resolve().parent / REPORT_NAME).write_text(text, encoding="utf-8")
+    if report.finished:
+        mark_finished(export)
     return 0
