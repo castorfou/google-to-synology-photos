@@ -127,3 +127,9 @@ Puis `/clear`, puis `/mattpocock-skills:implement #33`.
 Puis `/clear`, puis `/mattpocock-skills:implement #34`.
 
 Puis `/clear`, puis `/mattpocock-skills:implement #35`.
+
+Puis `/clear`, puis `/mattpocock-skills:implement #36`.
+
+Puis `/clear`, puis `/mattpocock-skills:implement #37`.
+
+La suite logique dans vos notes serait /clear puis /mattpocock-skills:implement #38.
