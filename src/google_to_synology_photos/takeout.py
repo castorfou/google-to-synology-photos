@@ -151,7 +151,9 @@ def _media_name(name: str, index: str, edited_suffix: str = "") -> str:
     return f"{stem}{edited_suffix}{index}{dot}{ext}"
 
 
-def _extension(stem: str, extensions_of: dict[str, list[str]], named: set[str]) -> str:
+def _extension(
+    media_stem: str, extensions_of: dict[str, list[str]], named: set[str]
+) -> str:
     """Return the extension of the file a sidecar with none goes with, or "".
 
     Its name gives no extension to check, so only a single candidate is sure:
@@ -160,13 +162,14 @@ def _extension(stem: str, extensions_of: dict[str, list[str]], named: set[str]) 
     """
     free = [
         extension
-        for extension in extensions_of.get(stem, [])
-        if f"{stem}{extension}" not in named and not MOTION_PART.fullmatch(extension)
+        for extension in extensions_of.get(media_stem, [])
+        if f"{media_stem}{extension}" not in named
+        and not MOTION_PART.fullmatch(extension)
     ]
     return free[0] if len(free) == 1 else ""
 
 
-def _name(title: str, media: str) -> str:
+def _photo_name(title: str, media: str) -> str:
     """Return the name of a photo: a title with no extension takes the file's."""
     return title if "." in title else f"{title}{PurePosixPath(media).suffix}"
 
@@ -316,8 +319,9 @@ def read_export(export_dir: Path) -> Export:
         sidecar_of.setdefault(url, sidecar)
         urls_by_folder.setdefault(folder, []).append(url)
         name, index = match["name"], match["index"] or ""
-        if "." not in name:
-            name += _extension(f"{folder}/{name}{index}", extensions_of, named)
+        media_stem = f"{folder}/{name}{index}"
+        if "." not in name and media_stem not in zip_of:
+            name += _extension(media_stem, extensions_of, named)
         original = f"{folder}/{_media_name(name, index)}"
         if original in zip_of:
             original_of.setdefault(url, original)
@@ -332,7 +336,7 @@ def read_export(export_dir: Path) -> Export:
         if media is not None:
             photos[url] = Photo(
                 url=url,
-                name=_name(sidecar["title"], media),
+                name=_photo_name(sidecar["title"], media),
                 taken=datetime.fromtimestamp(
                     int(sidecar["photoTakenTime"]["timestamp"]), UTC
                 ),

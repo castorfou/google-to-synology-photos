@@ -364,6 +364,24 @@ def test_a_sidecar_with_no_extension_takes_no_file_when_two_could_be_its_own(
     assert "- Noël: IMG_0001\n" in report.render()
 
 
+def test_a_file_with_the_exact_name_of_a_sidecar_stays_its_file(
+    tmp_path: Path,
+) -> None:
+    takeout = TakeoutBuilder()
+    album = takeout.album("Noël")
+    photo = takeout.photo(album, "IMG_0001", URL, file_extension=".jpg")
+    export = takeout.write(tmp_path / "export")
+    with zipfile.ZipFile(next(export.glob("*.zip")), "a") as zf:
+        zf.writestr(f"{ROOT}/Noël/IMG_0001", b"exact")
+        zf.writestr(f"{ROOT}/Photos de\xa02013/IMG_0001", b"exact")
+    nas = FakeSynologyPhotos()
+
+    run_import(export, nas)
+
+    assert nas.paths() == ["Photos/Google Photos/2013/IMG_0001__yxk3qp"]
+    assert nas.item("Photos/Google Photos/2013/IMG_0001__yxk3qp").data != photo.data
+
+
 def test_an_album_photo_whose_file_is_not_in_the_export_is_reported(
     tmp_path: Path,
 ) -> None:
