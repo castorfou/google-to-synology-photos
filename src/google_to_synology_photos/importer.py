@@ -11,12 +11,18 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from google_to_synology_photos.album_download import (
+    AlbumDownload,
+    paired_album,
+    photo_of_file,
+    read_album_downloads,
+)
 from google_to_synology_photos.description import comment_line, photo_descriptions
 from google_to_synology_photos.media import ConversionFailedError, MediaPreparer
 from google_to_synology_photos.paths import LIBRARY_ROOT, identity_of_path, nas_path
 from google_to_synology_photos.report import Report
 from google_to_synology_photos.synology import NasAlbum, SynologyPhotos
-from google_to_synology_photos.takeout import Album, Photo, read_export
+from google_to_synology_photos.takeout import Album, Export, Photo, read_export
 
 
 # Told the step, the number of the thing it starts, and how many there are.
@@ -174,22 +180,91 @@ def _take_over(
     return True
 
 
+def _add_album_download(
+    download: AlbumDownload,
+    export: Export,
+    snapshot: Snapshot,
+    earlier_photos: dict[str, Photo],
+    media: MediaPreparer,
+    report: Report,
+) -> tuple[Album, set[str]] | None:
+    """Put the photos of download in its Album; the export knows only some.
+
+    Bytes the export holds count as its photo, which brings its Caption: a copy
+    saved outside the Albums joins this one, and takes the place of the item the
+    same bytes got when they were known only from an Album Download.
+
+    Return the Album and the urls this added to it, or None if it has no Album.
+    """
+    album = paired_album(download, export)
+    if album is None:
+        report.unknown_album_downloads.append(download.folder)
+        return None
+    album.downloaded = max(album.downloaded or download.made, download.made)
+    report.album_downloads[download.folder] = 0
+    added: set[str] = set()
+    for file in download.files:
+        url = min(
+            export.urls_of_file.get(file.key, []),
+            key=lambda u: (u not in album.urls, u not in export.photos),
+            default=None,
+        )
+        # Most files of an Album: nothing to read, on every run.
+        if (
+            url in album.urls
+            and identity_of_path(nas_path(export.photos[url])) in snapshot.items
+        ):
+            continue
+        by_content = photo_of_file(file, media.date_in_file)
+        if url is not None:
+            photo = export.photos.get(url) or export.outside_albums[url]
+            if (
+                by_content is not None
+                and identity_of_path(nas_path(by_content)) in snapshot.items
+            ):
+                earlier_photos[url] = by_content
+        elif by_content is not None:
+            photo = by_content
+        else:
+            report.undated_files.append(f"{download.folder}: {file.name}")
+            continue
+        export.photos.setdefault(photo.url, photo)
+        if photo.url not in album.urls:
+            album.urls.append(photo.url)
+            added.add(photo.url)
+    return album, added
+
+
+def _sure_gaps(export: Export) -> list[str]:
+    """List the Albums whose orphan Comments are newer than their Album Download."""
+    gaps = []
+    for album in export.albums:
+        downloaded = album.downloaded
+        new = [c for c in album.orphans if downloaded is None or c.when > downloaded]
+        if new:
+            gaps.append(f"{album.title} (Comments with no photo: {len(new)})")
+    return gaps
+
+
 def run_import(
     export_dir: Path,
     nas: SynologyPhotos,
     progress: Progress = _no_progress,
     previous: Path | None = None,
+    album_downloads: Path | None = None,
 ) -> Report:
     """Build the NAS Library from the Takeout Export in export_dir.
 
     Uploads the photos the NAS lacks, replaces the files that differ from the
     previous Takeout Export and moves those it put elsewhere, creates, renames or
     grows the Albums, sets the Photo Descriptions that differ, and returns the
-    report of the run.
+    report of the run. The ZIPs in album_downloads add the photos the export lacks
+    to their Albums.
     """
     report = Report()
     export = read_export(export_dir)
     earlier_photos = {} if previous is None else read_export(previous).photos
+    downloads = [] if album_downloads is None else read_album_downloads(album_downloads)
     report.no_file = [
         f"{album.title}: {name}" for album in export.albums for name in album.no_file
     ]
@@ -204,6 +279,16 @@ def run_import(
     paths: dict[str, str] = {}
     with MediaPreparer() as media:
         snapshot = take_snapshot(nas)
+        added_by = {
+            download.folder: added
+            for download in downloads
+            if (
+                added := _add_album_download(
+                    download, export, snapshot, earlier_photos, media, report
+                )
+            )
+        }
+        report.sure_gaps = _sure_gaps(export)
         for number, (url, photo) in enumerate(export.photos.items(), start=1):
             progress("Photos and videos", number, len(export.photos))
             identity = identity_of_path(nas_path(photo))
@@ -274,8 +359,11 @@ def run_import(
                 else:
                     report.failed_writes.append(f"Name of Album {album.title!r}")
         missing = [item for item in items if item not in held]
-        if missing:
-            _add_to_album(album_id, album.title, missing, nas, report)
+        if missing and _add_to_album(album_id, album.title, missing, nas, report):
+            for folder, (download_album, urls) in added_by.items():
+                if download_album is album:
+                    joined = {item_ids[url] for url in urls if url in item_ids}
+                    report.album_downloads[folder] += len(joined & set(missing))
 
     descriptions = photo_descriptions(export)
     for number, (url, item_id) in enumerate(item_ids.items(), start=1):

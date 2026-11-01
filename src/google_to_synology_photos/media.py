@@ -14,7 +14,7 @@ import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from types import TracebackType
 from typing import Self
@@ -31,6 +31,7 @@ SUFFIX_OF_SIGNATURE = {b"\xff\xd8\xff": ".jpg", b"\x89PNG\r\n\x1a\n": ".png"}
 # Only the EXIF group counts: it is what gets written, and an XMP value, which
 # may be empty, stays as it is next to it.
 DATE_TAG = "EXIF:DateTimeOriginal"
+VIDEO_DATE_TAG = "QuickTime:CreateDate"
 POSITION_TAG = "EXIF:GPSLatitude"
 # By name: a HEIC photo looks like an HEVC video to ffprobe.
 VIDEO_SUFFIXES = (
@@ -148,6 +149,23 @@ class MediaPreparer:
         except ExifToolExecuteException:
             return PreparedFile(data, complete=False)
         return PreparedFile(file.read_bytes())
+
+    def date_in_file(self, name: str, data: bytes) -> datetime | None:
+        """Return the date a file holds, read as UTC, or None."""
+        file = Path(self._folder.name, f"held{Path(name).suffix}")
+        file.write_bytes(data)
+        try:
+            held = self._exiftool.get_tags(str(file), [DATE_TAG, VIDEO_DATE_TAG])[0]
+        except ExifToolExecuteException:
+            return None
+        for tag in (DATE_TAG, VIDEO_DATE_TAG):
+            try:
+                taken = datetime.strptime(str(held.get(tag)), EXIF_DATE)
+            except ValueError:
+                # None, or a date made of zeros or spaces.
+                continue
+            return taken.replace(tzinfo=UTC)
+        return None
 
     def _prepare_video(self, photo: Photo, data: bytes) -> PreparedFile:
         """Return the file to send for a video, converted if it cannot play."""

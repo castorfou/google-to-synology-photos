@@ -8,13 +8,14 @@ All code lives in `src/google_to_synology_photos/`.
 
 | Module | Role |
 |---|---|
-| `cli.py` | The `g2s` command: `g2s login` and `g2s import <export folder>`. Finds the previous export, marks a finished export, connects to the NAS, runs the import, shows progress, prints the report and writes `report.md`. |
+| `cli.py` | The `g2s` command: `g2s login` and `g2s import <export folder>`. Finds the previous export and the Album Downloads, marks a finished export, connects to the NAS, runs the import, shows progress, prints the report and writes `report.md`. |
 | `login.py` | Login to the NAS as the NAS Account: what is asked, and what is kept where. |
 | `dsm.py` | Transport to the DSM Web API: login, calls, multipart uploads, TLS. |
 | `synology_client.py` | The real Synology Photos client, over the `SYNO.Foto.*` Web API. |
-| `importer.py` | The import use case, `run_import(export_dir, nas, progress, previous) -> Report`. The only entry the CLI calls, and the test seam. Takes the snapshot of the NAS Library and pairs the Albums. |
+| `importer.py` | The import use case, `run_import(export_dir, nas, progress, previous, album_downloads) -> Report`. The only entry the CLI calls, and the test seam. Takes the snapshot of the NAS Library and pairs the Albums. |
+| `album_download.py` | Album Download reader. Reads the ZIPs in place, pairs each Album Download with its Album, and turns a file the export lacks into a photo known by its content. |
 | `takeout.py` | Takeout reader. Reads every ZIP of the export in place, picks the file of each photo, and returns the photos by `url`, the Albums with their Comments and Likes, and the orphan Comments. Refuses an export of selected Albums. Finds the export to compare with, and holds the mark of a finished export. |
-| `media.py` | Media preparer: writes into a photo the date and position it lacks, with ExifTool, and converts the videos Synology Photos cannot play, with ffmpeg. |
+| `media.py` | Media preparer: writes into a photo the date and position it lacks, with ExifTool, converts the videos Synology Photos cannot play, with ffmpeg, and reads the date a file holds. |
 | `paths.py` | NAS path rule. |
 | `description.py` | Photo Description builder. Pure. Holds the layout of the text. |
 | `synology.py` | `SynologyPhotos`, the interface of the Synology Photos client, and `SynologyError`. |
@@ -27,7 +28,7 @@ The reader lists every ZIP before it pairs anything: a media file and its sideca
 - Album folders are the folders holding a `métadonnées.json` (or `metadata.json`); its `title` is the Album title. An Album is defined by its sidecars.
 - A photo is identified by its sidecar `url`. The same photo appears in its Album folders and in its year folder (`Photos de 2013`); it is read once, uploaded once, and added to each Album.
 - A sidecar is named `<name>.supplemental-metadata.json`. When a name repeats in a folder, Google adds an index: `<name>.supplemental-metadata(1).json` goes with `IMG(1).JPG`. The index can differ from one folder to another, so a sidecar is only paired inside its own folder. Its `title` keeps the plain name.
-- Only photos that belong to at least one Album are imported.
+- Only photos that belong to at least one Album are imported, along with the copies an Album Download brings into an Album (see [Album Downloads](#album-downloads)).
 - The date taken is the sidecar `photoTakenTime.timestamp`, in UTC. The Caption is the sidecar `description`.
 - The position is the sidecar `geoData`. Google writes zeros there when it has no position, so `0, 0` means none.
 - Google writes a non-breaking space in `Google Photos` and in `Photos de <year>`.
@@ -131,14 +132,16 @@ Photos/Google Photos/<year taken>/<original name>__<6 chars>.<ext>
 - The characters `\ / : * ? " < > |` and control characters in the name are replaced with `_`.
 - A converted video keeps its original name and takes the extension `.mp4`.
 
+- A photo known only from an Album Download has no `url`: the 6 chars are the first 6 characters of the lowercase base32 encoding of the SHA-256 of its file, as it sits in the ZIP.
+
 The rule is deterministic: the same photo gets the same path in every export.
 
 The **identity** of a photo on the NAS is its path without the extension, so a converted video is found without probing or converting it again.
 
 ## Order of a run
 
-1. Read the export, and the previous export if there is one.
-2. Take a snapshot of the NAS Library.
+1. Read the export, the previous export if there is one, and the Album Downloads.
+2. Take a snapshot of the NAS Library, then put the photos of the Album Downloads in their Albums (see [Album Downloads](#album-downloads)).
 3. Prepare and upload every photo whose identity the snapshot lacks. An upload to a path that is already taken keeps the file there and returns its id. Replace and move the files that changed since the previous export (see [Files that changed](#files-that-changed)).
 4. Pair the Albums, create those with no pair, give the others their Google Photos title, and add the photos each one lacks.
 5. Set each Photo Description that differs from the text on the NAS. An empty text clears what is there.
@@ -194,6 +197,30 @@ A replacement leaves no trace on the NAS, so the export folder holds the only re
 
 The report counts *Files replaced* and *Files moved*.
 
+## Album Downloads
+
+An Album Download is the "Download all" ZIP of a shared Album. It holds one folder named after the Album, and every file of the Album, with no sidecars. Files that the export holds are byte-identical in the ZIP, so it is compared with the export by size and CRC, read from the ZIPs without unzipping. Google can split an Album in several ZIPs: all the ZIPs holding a folder of one name make one Album Download.
+
+The CLI reads the ZIPs of the `album-downloads` folder that sits next to the export folders (`takeout/album-downloads/` for `takeout/2024-01-01/`). A run on a finished export reads them too, so a ZIP can be added at any time, with the same command. Nothing records that a ZIP was used.
+
+**Pairing.** An Album Download goes with the Album that shares the most files with it, and its folder name settles a tie. An Album with none of its photos in the export is found by its title. An Album Download with neither shares nothing with any Album: it adds nothing, and the report lists it under *Album Downloads that match no Album*.
+
+**Each file:**
+
+- **Bytes in the Album.** Nothing happens. These are most of the files.
+- **Bytes elsewhere in the export.** The export photo joins the Album, with its Caption. This covers a photo of another Album, and a copy saved in a year folder, which a run otherwise leaves out. Originals of edited photos count, so the edited file stays the only item. When several photos hold the same bytes, the one in this Album goes first, then one in any Album.
+- **Bytes not in the export.** The file becomes a photo known by its content, which joins the Album. It has no Caption, no Comments and no position. It may be the oldest photo of its Album, and then it carries the Album text.
+
+**Date of a file known by its content.** The file's `DateTimeOriginal`, then its `QuickTime:CreateDate`, then a date in its name (`IMG-20240829-WA0000.jpg`, at midnight UTC): most WhatsApp files hold no date, and their name always has one. A date from the name is written into the file like any date a file lacks. The date of the ZIP is never used: it changes with each download, and so would the path. A file with no date is not added, and the report lists it under *Album Download files with no date, not added*.
+
+**Later runs.** The path comes from the content, so the snapshot finds the photo, and a second run with the same ZIP makes no write. Without its ZIP, the photo is not in the run: it stays on the NAS, in its Albums, with its Photo Description. An Album text it carried stays there too, and the next oldest photo gets it as well.
+
+**Same bytes in a later export.** When a Refresh brings under a `url` the bytes of a photo known by its content, and the ZIP is still there, the export item takes its place: it follows the steps of a move, joins every NAS Album of the old item, and the old item is removed last. The report counts it under *Files moved*. Without the ZIP nothing tells that the bytes are the same, so a copy in an Album gives a second item, and a copy outside the Albums stays out.
+
+**Sure gaps.** The report lists the Albums with orphan Comments, under *Shared Albums where photos are surely missing*, and asks for their Album Download. Only the orphan Comments newer than the newest Album Download of an Album count, so an Album leaves the list once it has one, and comes back when a Refresh brings a newer orphan Comment. The date of an Album Download is the date of the newest file in its ZIPs, which Google sets when it makes the ZIP. Removing a ZIP brings its Album back to the list. A Comment posted after the ZIP on a photo that the ZIP brought counts as new as well: the export cannot tell.
+
+The report counts *Album Downloads used*, and gives for each one the photos that joined its Album during the run, whether they came from the ZIP or from the export. *Photos and videos uploaded* includes those of the ZIPs.
+
 ## Synology Photos client
 
 `SynologyPhotos` speaks NAS paths and item ids:
@@ -228,6 +255,7 @@ Tests run the import use case, or the `g2s` CLI, on synthetic data only:
 - `tests/test_resumable_runs.py` runs imports again on the same fake NAS, and stops a run at every possible write.
 - `tests/test_refresh.py` chains runs on an older and a newer export, with changes made on the fake NAS in between.
 - `tests/test_refresh_files.py` chains runs with a previous export: edits, changed videos and fixed dates.
+- `tests/test_album_downloads.py` adds synthetic Album Downloads, made by `write_album_download` in `tests/takeout_builder.py`, to runs on an export.
 - `tests/fake_synology.py` is an in-memory fake Synology Photos, true to the behaviour measured on the DS923 by default. Setting `descriptions_stick = False` or `album_names_stick = False` makes description writes or Album renames silently not stick, and `overwrite_keeps_id = False` gives an overwritten item a new id, out of its Albums. The DS923 keeps the id: that setting checks that the import does not rely on it. `writes` counts the write calls, and `writes_left` cuts the connection after that many.
 - `tests/test_contract.py` is the contract of the client. It runs against the fake always, and against the DS923 with `G2S_CONTRACT=1` (see [Synology Photos API](synology-photos-api.md)).
 - `tests/test_login.py` runs the login with an in-memory keyring and a fake NAS.
