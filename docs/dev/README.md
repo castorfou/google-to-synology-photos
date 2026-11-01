@@ -1,41 +1,32 @@
-!!! info "À propos de cette section"
-    Cette section contient la documentation pour les **développeurs** qui contribuent au projet Google to Synology photos.
+# Developer guide
 
-    Elle explique **comment le code fonctionne** et comment y contribuer efficacement.
+`g2s` is a Python 3.12 command-line tool that turns a Google Takeout Export into a NAS Library in Synology Photos. It has no state of its own: each run works from the exports and from what the NAS holds.
 
-## Contenu suggéré
+The vocabulary (Album, Caption, Refresh and so on) is defined in `CONTEXT.md` at the repository root. Commands, conventions and the workflow are in `CLAUDE.md`.
 
-Voici les types de documentation que vous devriez ajouter dans cette section :
+## Where to find what
 
-### Architecture
-- Vue d'ensemble de l'architecture du projet
-- Diagrammes d'architecture (composants, flux de données)
-- Choix de design et leurs justifications
-- Structure des dossiers et organisation du code
+| Topic | Page |
+|---|---|
+| Modules | [Architecture: Modules](architecture.md#modules) |
+| Identity rules (photo `url`, content hash, Album by photos) | [Architecture: Identity](architecture.md#identity) |
+| The path rule | [Architecture: NAS path rule](architecture.md#nas-path-rule) |
+| The run order, and Refresh | [Architecture: Order of a run](architecture.md#order-of-a-run) |
+| The API calls and their quirks | [Synology Photos API](synology-photos-api.md) |
+| The tests and the fake Synology Photos | [Architecture: Tests](architecture.md#tests) |
+| The opt-in contract test | [Synology Photos API: Contract test](synology-photos-api.md#contract-test) |
 
-### Configuration de l'environnement
-- Installation de l'environnement de développement
-- Configuration VS Code / Dev Container
-- Outils et extensions recommandés
-- Configuration des secrets et variables d'environnement
+Read [Synology Photos API](synology-photos-api.md) before changing `dsm.py` or `synology_client.py`.
 
-### Guide de contribution
-- Processus de contribution (fork, branch, PR)
-- Standards de code et conventions
-- Comment écrire des tests
-- Workflow TDD recommandé
-- Comment utiliser les commandes Claude Code (`/fix-issue`, etc.)
+## Working on the code
 
-### Référence technique
-- Description des modules principaux
-- APIs internes et interfaces
-- Gestion des dépendances
-- Configuration des outils (ruff, mypy, pytest)
+```bash
+uv sync --active --all-extras     # dependencies
+uv run --active pytest            # tests; needs ffmpeg and ExifTool
+uv run --active mkdocs build --strict
+pre-commit run --all-files
+```
 
-### Processus de développement
-- Cycle de développement (feature → tests → code → review)
-- Stratégie de branches Git
-- Processus de review de code
-- Gestion des versions et releases
+The repository is public. Tests, fixtures and docs hold no personal data, and the real exports stay in `data/raw/`, which git ignores.
 
 {% include "../bonnes_pratiques.md" %}
