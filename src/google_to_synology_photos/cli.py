@@ -12,6 +12,7 @@ from pathlib import Path
 import keyring.errors
 import platformdirs
 
+from google_to_synology_photos.album_download import ALBUM_DOWNLOADS_FOLDER
 from google_to_synology_photos.importer import run_import
 from google_to_synology_photos.login import (
     DsmGateway,
@@ -113,7 +114,13 @@ def main(
         parser.error(f"{previous} is not a folder")
 
     try:
-        report = run_import(export, connect(False), _show_progress, previous)
+        report = run_import(
+            export,
+            connect(False),
+            _show_progress,
+            previous,
+            export.resolve().parent / ALBUM_DOWNLOADS_FOLDER,
+        )
     except (
         SelectedAlbumsExportError,
         ExifToolMissingError,

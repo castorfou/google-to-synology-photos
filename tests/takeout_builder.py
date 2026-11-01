@@ -288,6 +288,26 @@ class _ExportFiles:
             self.files[f"{folder}/{stem}~2"] = jpeg_bytes(f"{photo.url}-video-2")
 
 
+def write_album_download(
+    folder: Path,
+    title: str,
+    files: dict[str, bytes],
+    made: datetime = datetime(2026, 10, 28, 10, 21, 34, tzinfo=UTC),
+    zip_name: str = "",
+) -> Path:
+    """Write the "Download all" ZIP of an Album: one folder and no sidecars.
+
+    Google dates every file of the ZIP when it is made.
+    """
+    folder.mkdir(parents=True, exist_ok=True)
+    zip_path = folder / (zip_name or f"{title}-1-001.zip")
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        for name, data in files.items():
+            info = zipfile.ZipInfo(f"{title}/{name}", made.timetuple()[:6])
+            zf.writestr(info, data)
+    return folder
+
+
 def _time(when: datetime) -> dict:
     return {"timestamp": str(int(when.timestamp())), "formatted": ""}
 

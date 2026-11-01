@@ -6,6 +6,12 @@ It holds NAS paths and Album titles, so it stays on the user's machine.
 from dataclasses import dataclass, field
 
 
+ASK_FOR_ALBUM_DOWNLOAD = (
+    'Use "Download all" on these Albums in Google Photos, put each ZIP in the '
+    "`album-downloads` folder next to the export folders, and run g2s again."
+)
+
+
 @dataclass
 class Report:
     """What a run did, and what did not reach the NAS Library."""
@@ -26,6 +32,11 @@ class Report:
     failed_conversions: list[str] = field(default_factory=list)
     no_file: list[str] = field(default_factory=list)
     orphan_comments: list[str] = field(default_factory=list)
+    sure_gaps: list[str] = field(default_factory=list)
+    # How many photos joined the Album of each Album Download, by its name.
+    album_downloads: dict[str, int] = field(default_factory=dict)
+    unknown_album_downloads: list[str] = field(default_factory=list)
+    undated_files: list[str] = field(default_factory=list)
 
     @property
     def finished(self) -> bool:
@@ -48,6 +59,7 @@ class Report:
             f"- Photo Descriptions rewritten: {self.descriptions_rewritten}",
             f"- Comments written: {self.comments_written}",
             f"- Likes written: {self.likes_written}",
+            f"- Album Downloads used: {len(self.album_downloads)}",
             "",
             "## Writes that did not stick",
             "",
@@ -64,4 +76,17 @@ class Report:
         lines += [f"- {c}".replace("\n", " ") for c in self.orphan_comments] or [
             "None."
         ]
+        lines += ["", "## Shared Albums where photos are surely missing", ""]
+        if self.sure_gaps:
+            lines += [ASK_FOR_ALBUM_DOWNLOAD, ""]
+        lines += [f"- {a}" for a in self.sure_gaps] or ["None."]
+        lines += ["", "## Album Downloads", ""]
+        lines += [
+            f"- {folder} (photos added: {added})"
+            for folder, added in self.album_downloads.items()
+        ] or ["None."]
+        lines += ["", "## Album Downloads that match no Album", ""]
+        lines += [f"- {f}" for f in self.unknown_album_downloads] or ["None."]
+        lines += ["", "## Album Download files with no date, not added", ""]
+        lines += [f"- {f}" for f in self.undated_files] or ["None."]
         return "\n".join(lines) + "\n"

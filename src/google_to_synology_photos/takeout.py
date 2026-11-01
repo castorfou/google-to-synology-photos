@@ -22,6 +22,8 @@ ROOT_COMMENTS_NAMES = (
     "commentaires_albums_partagés.json",
     "shared_album_comments.json",
 )
+# Tells the same bytes in any ZIP, without reading them: size and CRC.
+FileKey = tuple[int, int]
 
 
 class SelectedAlbumsExportError(Exception):
@@ -51,6 +53,8 @@ class Photo:
 
     size and crc are those of its media file in the ZIP: they tell whether the
     file changed from one export to the next without reading it.
+    album_download marks a photo known only from an Album Download: its url is
+    its content hash.
     """
 
     url: str
@@ -62,6 +66,7 @@ class Photo:
     member: str
     size: int
     crc: int
+    album_download: bool = False
 
     def read(self) -> bytes:
         """Return the bytes of the media file, read from its ZIP."""
@@ -106,6 +111,7 @@ class Album:
     the photos that have some: a photo in two Albums has different ones in each.
     reactions holds the Comments and Likes on the Album itself.
     orphans holds its Comments that have no photo to sit on, oldest first.
+    downloaded is the date of its newest Album Download.
     """
 
     title: str
@@ -115,6 +121,7 @@ class Album:
     description: str = ""
     reactions: Reactions = field(default_factory=lambda: Reactions([], []))
     orphans: list[Comment] = field(default_factory=list)
+    downloaded: datetime | None = None
 
 
 @dataclass
@@ -122,11 +129,16 @@ class Export:
     """The Albums of a Takeout Export, and the photos that belong to them.
 
     orphans holds the root Comments that match no photo and no known Album.
+    outside_albums holds the photos in no Album, which a run leaves out.
+    urls_of_file holds the urls of each media file, originals of edited photos
+    included, whether in an Album or not.
     """
 
     photos: dict[str, Photo]
     albums: list[Album]
     orphans: list[Comment] = field(default_factory=list)
+    outside_albums: dict[str, Photo] = field(default_factory=dict)
+    urls_of_file: dict[FileKey, list[str]] = field(default_factory=dict)
 
 
 def _media_name(name: str, index: str, edited_suffix: str = "") -> str:
@@ -240,7 +252,7 @@ def read_export(export_dir: Path) -> Export:
 
     A media file and its sidecar may sit in different ZIPs, and an Album folder
     may hold only sidecars, so all the ZIPs are listed before anything is paired.
-    Photos that belong to no Album are left out.
+    Photos that belong to no Album are kept apart.
 
     Raises SelectedAlbumsExportError on an export of selected Albums.
     """
@@ -350,9 +362,18 @@ def read_export(export_dir: Path) -> Export:
     for album in albums.values():
         album.orphans.sort(key=lambda comment: comment.when)
 
+    urls_of_file: dict[FileKey, list[str]] = {}
+    for chosen in (original_of, edited_of):
+        for url, member in chosen.items():
+            key = (info_of[member].file_size, info_of[member].CRC)
+            if url not in urls_of_file.setdefault(key, []):
+                urls_of_file[key].append(url)
+
     in_albums = {url for album in albums.values() for url in album.urls}
     return Export(
         {u: p for u, p in photos.items() if u in in_albums},
         list(albums.values()),
         unknown_album,
+        {u: p for u, p in photos.items() if u not in in_albums},
+        urls_of_file,
     )

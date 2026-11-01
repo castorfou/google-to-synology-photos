@@ -27,8 +27,12 @@ One download of the Household Account's Google Photos content produced by Google
 _Avoid_: dump, backup, archive
 
 **Album Download**:
-The files of one shared Album downloaded from Google Photos ("Download all"), used only to add the photos other Contributors put in that Album, which are missing from the Takeout Export. Optional, and added whenever the user wants.
+The files of one shared Album downloaded from Google Photos ("Download all"), used to add to that Album the photos other Contributors put there, which are missing from the Takeout Export. Its bytes also tell which photos of the Takeout Export belong in the Album, and its date tells which Orphan Comments are new. Optional, and added whenever the user wants.
 _Avoid_: album export, album takeout
+
+**Sure gap**:
+A shared Album that has Orphan Comments newer than its latest Album Download. The report lists it and asks for its Album Download. Gaps that leave no Comment cannot be seen.
+_Avoid_: incomplete Album, missing Album
 
 **Refresh**:
 Bringing the NAS Library up to date from a newer Takeout Export. Imported content follows Google Photos and may overwrite changes made on the NAS. No photo or Album that once existed is removed, and no photo is taken out of an Album (a photo whose date changed moves: its new item takes the place of the old one), but text (Captions, Comments, Likes) follows the latest Takeout Export: a Comment deleted in Google Photos disappears from the NAS Library.
