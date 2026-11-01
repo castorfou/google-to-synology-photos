@@ -30,24 +30,29 @@ class Snapshot:
     items holds the path and id of each item of the NAS Library, by identity;
     albums holds the items of every Album made only of NAS Library photos: the
     others are the Household's own, and own_albums holds their items.
+    twins holds the second item of an identity: a stop can leave one when a
+    changed video takes another extension.
     """
 
     items: dict[str, tuple[str, int]]
     albums: dict[NasAlbum, set[int]]
     own_albums: dict[NasAlbum, set[int]]
+    twins: dict[str, tuple[str, int]]
 
 
 def take_snapshot(nas: SynologyPhotos) -> Snapshot:
     """Read what the NAS holds of the NAS Library."""
     listing = nas.folder_items(LIBRARY_ROOT)
-    items = {
-        identity_of_path(path): (path, item_id) for path, item_id in listing.items()
-    }
+    items: dict[str, tuple[str, int]] = {}
+    twins: dict[str, tuple[str, int]] = {}
+    for path, item_id in listing.items():
+        identity = identity_of_path(path)
+        (twins if identity in items else items)[identity] = (path, item_id)
     library = set(listing.values())
     albums = {album: set(nas.album_items(album.id)) for album in nas.albums()}
-    ours = {album: held for album, held in albums.items() if held <= library}
-    own = {album: held for album, held in albums.items() if album not in ours}
-    return Snapshot(items, ours, own)
+    in_library = {album: held for album, held in albums.items() if held <= library}
+    own = {album: held for album, held in albums.items() if album not in in_library}
+    return Snapshot(items, in_library, own, twins)
 
 
 def pair_albums(
@@ -96,11 +101,11 @@ def _send(
     media: MediaPreparer,
     nas: SynologyPhotos,
     report: Report,
-    replacing: str | None,
+    overwriting: str | None,
 ) -> tuple[str, int] | None:
     """Send photo; return its path and id, or None if it did not reach the NAS.
 
-    It is overwritten at the path it is replacing, and never at any other.
+    Only a file sent to the path overwriting is overwritten.
     """
     try:
         prepared = media.prepare(photo)
@@ -111,7 +116,7 @@ def _send(
     path = nas_path(photo, prepared.extension)
     if not prepared.complete:
         report.metadata_not_written.append(path)
-    send = nas.overwrite if path == replacing else nas.upload
+    send = nas.overwrite if path == overwriting else nas.upload
     item_id = send(path, prepared.data)
     if nas.item_at(path) != item_id:
         report.failed_writes.append(f"Upload of {path}")
@@ -121,16 +126,19 @@ def _send(
     return path, item_id
 
 
-def _file_changed(earlier: Photo, photo: Photo) -> bool:
-    """Tell whether photo needs another file than the previous export gave.
-
-    The date counts: it is written into the files that lack one.
-    """
-    return (earlier.taken, earlier.size, earlier.crc) != (
-        photo.taken,
-        photo.size,
-        photo.crc,
-    )
+def _add_to_album(
+    album_id: int,
+    name: str,
+    item_ids: list[int],
+    nas: SynologyPhotos,
+    report: Report,
+) -> bool:
+    """Add items to an Album and read it back; tell whether they all joined it."""
+    nas.add_to_album(album_id, item_ids)
+    if set(item_ids) - set(nas.album_items(album_id)):
+        report.failed_writes.append(f"Photos of Album {name!r}")
+        return False
+    return True
 
 
 def _take_over(
@@ -152,9 +160,7 @@ def _take_over(
         if old_id == item_id or old_id not in held:
             continue
         if item_id not in held:
-            nas.add_to_album(album.id, [item_id])
-            if item_id not in nas.album_items(album.id):
-                report.failed_writes.append(f"Photos of Album {album.name!r}")
+            if not _add_to_album(album.id, album.name, [item_id], nas, report):
                 stuck = False
                 continue
             held.add(item_id)
@@ -203,14 +209,20 @@ def run_import(
             identity = identity_of_path(nas_path(photo))
             known = snapshot.items.get(identity)
             earlier = earlier_photos.get(url)
-            was = identity if earlier is None else identity_of_path(nas_path(earlier))
+            earlier_identity = (
+                identity if earlier is None else identity_of_path(nas_path(earlier))
+            )
             # Still there after a move stopped halfway: the move goes on.
-            left_behind = None if was == identity else snapshot.items.get(was)
+            left_behind = (
+                None
+                if earlier_identity == identity
+                else snapshot.items.get(earlier_identity)
+            )
             replacing = (
                 known is not None
                 and earlier is not None
-                and was == identity
-                and _file_changed(earlier, photo)
+                and earlier_identity == identity
+                and photo.needs_new_file(earlier)
             )
             if known is None or replacing:
                 sent = _send(photo, media, nas, report, known[0] if known else None)
@@ -222,8 +234,15 @@ def run_import(
             else:
                 sent = known
             paths[url], item_ids[url] = sent
-            old = left_behind or (known if replacing else None)
-            if old is not None and not _take_over(old, sent, snapshot, nas, report):
+            replaced = [left_behind]
+            if replacing:
+                replaced += [known, snapshot.twins.get(identity)]
+            taken_over = [
+                _take_over(old, sent, snapshot, nas, report)
+                for old in replaced
+                if old is not None and old != sent
+            ]
+            if not all(taken_over):
                 continue
             if left_behind is not None:
                 report.moved += 1
@@ -256,9 +275,7 @@ def run_import(
                     report.failed_writes.append(f"Name of Album {album.title!r}")
         missing = [item for item in items if item not in held]
         if missing:
-            nas.add_to_album(album_id, missing)
-            if set(missing) - set(nas.album_items(album_id)):
-                report.failed_writes.append(f"Photos of Album {album.title!r}")
+            _add_to_album(album_id, album.title, missing, nas, report)
 
     descriptions = photo_descriptions(export)
     for number, (url, item_id) in enumerate(item_ids.items(), start=1):

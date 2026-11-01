@@ -13,7 +13,7 @@ All code lives in `src/google_to_synology_photos/`.
 | `dsm.py` | Transport to the DSM Web API: login, calls, multipart uploads, TLS. |
 | `synology_client.py` | The real Synology Photos client, over the `SYNO.Foto.*` Web API. |
 | `importer.py` | The import use case, `run_import(export_dir, nas, progress, previous) -> Report`. The only entry the CLI calls, and the test seam. Takes the snapshot of the NAS Library and pairs the Albums. |
-| `takeout.py` | Takeout reader. Reads every ZIP of the export in place, picks the file of each photo, and returns the photos by `url`, the Albums with their Comments and Likes, and the orphan Comments. Refuses an export of selected Albums. |
+| `takeout.py` | Takeout reader. Reads every ZIP of the export in place, picks the file of each photo, and returns the photos by `url`, the Albums with their Comments and Likes, and the orphan Comments. Refuses an export of selected Albums. Finds the export older than another. |
 | `media.py` | Media preparer: writes into a photo the date and position it lacks, with ExifTool, and converts the videos Synology Photos cannot play, with ffmpeg. |
 | `paths.py` | NAS path rule. |
 | `description.py` | Photo Description builder. Pure. Holds the layout of the text. |
@@ -153,7 +153,7 @@ A run keeps no state file. It writes only what the snapshot shows as missing, so
 
 The snapshot holds every item under `Photos/Google Photos/`, and every normal Album made only of those items, with its items. An Album holding any other photo is the Household's own: a run never pairs, renames or grows it. The only exception is a photo that moves, whose new item takes the place of the old one there. An empty Album counts as made of NAS Library photos.
 
-Each Album of the export is paired one to one with a NAS Album. The pair sharing the most photos goes first, and the same title settles a tie. An Album left over takes an empty NAS Album of its title, which is what a run stopped between creating and filling an Album leaves. An Album with no pair is created. Photos are only ever added to a NAS Album.
+Each Album of the export is paired one to one with a NAS Album. The pair sharing the most photos goes first, and the same title settles a tie. An Album left over takes an empty NAS Album of its title, which is what a run stopped between creating and filling an Album leaves. An Album with no pair is created. A run only ever adds photos to a NAS Album, apart from the old item of a moved photo.
 
 The report counts the photos found under *Already on the NAS*. Its lists cover the current run: a file sent without its date in an earlier run is not listed again. A failed conversion is tried again at each run.
 
@@ -166,7 +166,6 @@ A Refresh is a run on a newer Takeout Export, and it follows the same steps. The
 - **Deleted in Google Photos.** An Album or a photo missing from the export stays on the NAS, with its Photo Description. Pairing goes by shared photos only, so an Album of the export with no better pair takes over a NAS Album it shares a photo with, and renames it: this happens to the NAS Album of a deleted Album, and to the old Album when an Album is split in Google Photos.
 - **Text.** A Photo Description that differs from the export is written again, which also covers a changed Caption, new Comments and Likes, deleted Comments and edits made on the NAS.
 - **Deleted on the NAS.** A photo is sent again, joins its Albums and gets its text. An Album is recreated.
-
 - **Files.** A file that changed is replaced or moved (see [Files that changed](#files-that-changed)).
 
 The report counts *Albums renamed*, and *Photo Descriptions rewritten* apart from *Photo Descriptions written*: a Description is rewritten when the NAS held another text, and written when it held none. *Comments written* and *Likes written* count all those in the texts written, not only the new ones. A rename is read back from the list of Albums. A rename that does not stick goes under *Writes that did not stick*.
@@ -175,15 +174,15 @@ The report counts *Albums renamed*, and *Photo Descriptions rewritten* apart fro
 
 A file on the NAS cannot be compared with the export: ExifTool adds the date, conversion changes everything, and Synology Photos writes the Photo Description back into JPGs. A Refresh therefore compares the export with the previous one, photo by photo, by `url`.
 
-**Which previous export.** `--previous` gives it. By default it is the newest folder next to the export whose name sorts before the export's and that holds ZIPs, so export folders are named `YYYY-MM-DD`. With no previous export, nothing is overwritten and nothing is removed: a photo whose date changed is uploaded at its new path, next to the old item.
+**Which previous export.** `--previous` gives it. By default it is the newest folder next to the export that holds ZIPs and is named `YYYY-MM-DD`, with a name that sorts before the export's. With no previous export, nothing is overwritten and nothing is removed: a photo whose date changed is uploaded at its new path, next to the old item.
 
 **Replaced.** A photo whose chosen file changed (size or CRC in the ZIP, which also covers a new `-modifié` file) or whose date changed inside its year is prepared again and overwritten at its path. The date counts because it is written into the files that lack one. The overwrite clears the Photo Description, so the text step writes it again. Only these videos are converted again. If the overwrite gives the item a new id, the new item joins every Album of the old one.
 
-**Moved.** A photo whose identity differs from the one in the previous export (the year of `photoTakenTime`, or its name) is uploaded at its new path. The new item then joins every NAS Album holding the old one, the Household's own Albums and those Google Photos took it out of included, and the old item is removed last. The old item stays if the new one could not join an Album, and that Album goes under *Writes that did not stick*. A changed video that no longer needs converting has a new extension, so it follows the same steps.
+**Moved.** A photo whose identity differs from the one in the previous export (the year of `photoTakenTime`, or its name) is uploaded at its new path. The new item then joins every NAS Album holding the old one, the Household's own Albums and those Google Photos took it out of included, and the old item is removed last. The old item stays if the new one could not join an Album, and that Album goes under *Writes that did not stick*. A changed video that no longer needs converting has a new extension, so it follows the same steps. A stop there leaves two items of one identity, and the snapshot keeps both, so the run started again finishes the job.
 
 **Failure.** A changed video that fails to convert leaves the old file on the NAS, in its Albums and with its text.
 
-**Running again.** A move is found from the NAS: the old item is gone, or the move goes on from where it stopped. A replacement cannot be seen on the NAS, so a run started again on the same pair of exports replaces the same files again, converts the same videos again and rewrites their Photo Descriptions. The Library ends the same. The next Refresh compares with this export, so these files are then unchanged.
+**Running again.** A move is found from the NAS: the old item is gone, or the move goes on from where it stopped. A replacement cannot be seen on the NAS, so a run started again on the same pair of exports replaces the same files again, converts the same videos again and rewrites their Photo Descriptions. The Library ends the same. The next Refresh compares with this export, so these files are then unchanged. For the same reason, a change is only seen between the two exports compared: a Refresh that stopped has to be finished before the next export is imported.
 
 The report counts *Files replaced* and *Files moved*.
 
@@ -221,7 +220,7 @@ Tests run the import use case, or the `g2s` CLI, on synthetic data only:
 - `tests/test_resumable_runs.py` runs imports again on the same fake NAS, and stops a run at every possible write.
 - `tests/test_refresh.py` chains runs on an older and a newer export, with changes made on the fake NAS in between.
 - `tests/test_refresh_files.py` chains runs with a previous export: edits, changed videos and fixed dates.
-- `tests/fake_synology.py` is an in-memory fake Synology Photos, true to the behaviour measured on the DS923. Setting `descriptions_stick = False` or `album_names_stick = False` makes description writes or Album renames silently not stick, and `overwrite_keeps_id = False` gives an overwritten item a new id, out of its Albums. `writes` counts the write calls, and `writes_left` cuts the connection after that many.
+- `tests/fake_synology.py` is an in-memory fake Synology Photos, true to the behaviour measured on the DS923 by default. Setting `descriptions_stick = False` or `album_names_stick = False` makes description writes or Album renames silently not stick, and `overwrite_keeps_id = False` gives an overwritten item a new id, out of its Albums. The DS923 keeps the id: that setting checks that the import does not rely on it. `writes` counts the write calls, and `writes_left` cuts the connection after that many.
 - `tests/test_contract.py` is the contract of the client. It runs against the fake always, and against the DS923 with `G2S_CONTRACT=1` (see [Synology Photos API](synology-photos-api.md)).
 - `tests/test_login.py` runs the login with an in-memory keyring and a fake NAS.
 

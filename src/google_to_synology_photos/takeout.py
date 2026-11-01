@@ -13,6 +13,7 @@ from pathlib import Path
 SIDECAR = re.compile(r"(?P<name>.+)\.supplemental-metadata(?P<index>\(\d+\))?\.json")
 # An edited photo has no sidecar of its own: it shares the original's.
 EDITED_SUFFIXES = ("-modifié", "-edited")
+EXPORT_FOLDER = re.compile(r"\d{4}-\d{2}-\d{2}")
 ALBUM_METADATA_NAMES = ("métadonnées.json", "metadata.json")
 HEART = "❤️"
 ROOT_COMMENTS_NAMES = (
@@ -64,6 +65,14 @@ class Photo:
         """Return the bytes of the media file, read from its ZIP."""
         with zipfile.ZipFile(self.zip_path) as zf:
             return zf.read(self.member)
+
+    def needs_new_file(self, earlier: "Photo") -> bool:
+        """Tell whether this photo needs another file than it had in an export.
+
+        The date counts: it is written into the files that lack one.
+        """
+        ours = (self.taken, self.size, self.crc)
+        return ours != (earlier.taken, earlier.size, earlier.crc)
 
 
 @dataclass(frozen=True)
@@ -194,13 +203,15 @@ def _place_root_comments(
 def older_export(export_dir: Path) -> Path | None:
     """Return the newest Takeout Export older than export_dir, next to it.
 
-    Exports are folders of ZIPs named by date, so their names sort by age.
+    Exports are folders of ZIPs named YYYY-MM-DD, so their names sort by age.
     """
     export = export_dir.resolve()
     older = [
         folder
         for folder in export.parent.iterdir()
-        if folder.is_dir() and folder.name < export.name and any(folder.glob("*.zip"))
+        if EXPORT_FOLDER.fullmatch(folder.name)
+        and folder.name < export.name
+        and any(folder.glob("*.zip"))
     ]
     return max(older, key=lambda folder: folder.name, default=None)
 

@@ -31,7 +31,7 @@ The files of one shared Album downloaded from Google Photos ("Download all"), us
 _Avoid_: album export, album takeout
 
 **Refresh**:
-Bringing the NAS Library up to date from a newer Takeout Export. Imported content follows Google Photos and may overwrite changes made on the NAS. No photo or Album that once existed is removed, and no photo is taken out of an Album, but text (Captions, Comments, Likes) follows the latest Takeout Export: a Comment deleted in Google Photos disappears from the NAS Library.
+Bringing the NAS Library up to date from a newer Takeout Export. Imported content follows Google Photos and may overwrite changes made on the NAS. No photo or Album that once existed is removed, and no photo is taken out of an Album (a photo whose date changed moves: its new item takes the place of the old one), but text (Captions, Comments, Likes) follows the latest Takeout Export: a Comment deleted in Google Photos disappears from the NAS Library.
 _Avoid_: sync, re-import, update
 
 **Switch-over**:

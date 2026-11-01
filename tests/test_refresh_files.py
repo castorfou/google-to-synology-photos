@@ -408,6 +408,35 @@ def test_a_changed_video_that_no_longer_needs_converting_leaves_no_duplicate(
     assert report.replaced == 1
 
 
+def test_such_a_video_stopped_at_any_write_leaves_no_duplicate(tmp_path: Path) -> None:
+    hevc = make_video(tmp_path, "-c:v", "libx265", "-c:a", "aac", "-f", "mov")
+    h264 = make_video(tmp_path, *H264, "-f", "mov")
+    first = video_export(tmp_path / "2024-01-01", hevc, name="VID.mov")
+    second = video_export(tmp_path / "2025-01-01", h264, name="VID.mov")
+
+    def imported() -> FakeSynologyPhotos:
+        nas = FakeSynologyPhotos()
+        run_import(first, nas)
+        nas.writes = 0
+        return nas
+
+    whole = imported()
+    run_import(second, whole, previous=first)
+    assert whole.writes == 3
+
+    for stop_at in range(whole.writes):
+        nas = imported()
+        nas.writes_left = stop_at
+        with pytest.raises(ConnectionError):
+            run_import(second, nas, previous=first)
+        nas.writes_left = None
+
+        run_import(second, nas, previous=first)
+
+        assert nas.paths() == [KEPT_VIDEO_PATH], f"stopped at write {stop_at}"
+        assert nas.album_contents() == [("Été", [KEPT_VIDEO_PATH])]
+
+
 def test_a_changed_video_that_fails_to_convert_stays_as_it_was(tmp_path: Path) -> None:
     first = video_export(tmp_path / "2024-01-01", make_video(tmp_path, *AVI))
     second = video_export(tmp_path / "2025-01-01", b"not a video")
@@ -441,6 +470,17 @@ def test_g2s_compares_with_the_newest_older_export_next_to_it(tmp_path: Path) ->
     main(["import", str(export)], connect=lambda ask_again: nas)
 
     assert "Files replaced: 1" in (tmp_path / "report.md").read_text(encoding="utf-8")
+
+
+def test_g2s_takes_only_a_dated_folder_for_an_older_export(tmp_path: Path) -> None:
+    edited_export(tmp_path / "2024-backup")
+    export = edited_export(tmp_path / "2025-01-01", edited=True)
+    nas = FakeSynologyPhotos()
+    run_import(edited_export(tmp_path / "elsewhere" / "first"), nas)
+
+    main(["import", str(export)], connect=lambda ask_again: nas)
+
+    assert "Files replaced: 0" in (tmp_path / "report.md").read_text(encoding="utf-8")
 
 
 def test_g2s_compares_with_the_export_it_is_given(tmp_path: Path) -> None:

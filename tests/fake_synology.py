@@ -39,7 +39,8 @@ class FakeSynologyPhotos:
         self.descriptions_stick = True
         # Set to False to make Album renames silently not stick.
         self.album_names_stick = True
-        # Set to False to make an overwrite give the item a new id, out of its Albums.
+        # Set to False to make an overwrite give the item a new id, out of its
+        # Albums. The DS923 keeps the id: the import does not rely on it.
         self.overwrite_keeps_id = True
         self.writes = 0
         self.writes_left: int | None = None
