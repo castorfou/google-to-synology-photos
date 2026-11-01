@@ -14,7 +14,7 @@ All code lives in `src/google_to_synology_photos/`.
 | `synology_client.py` | The real Synology Photos client, over the `SYNO.Foto.*` Web API. |
 | `importer.py` | The import use case, `run_import(export_dir, nas, progress, previous, album_downloads) -> Report`. The only entry the CLI calls, and the test seam. Takes the snapshot of the NAS Library and pairs the Albums. |
 | `album_download.py` | Album Download reader. Reads the ZIPs in place, pairs each Album Download with its Album, and turns a file the export lacks into a photo known by its content. |
-| `takeout.py` | Takeout reader. Reads every ZIP of the export in place, picks the file of each photo, and returns the photos by `url`, the Albums with their Comments and Likes, and the orphan Comments. Refuses an export of selected Albums. Finds the export to compare with, and holds the mark of a finished export. |
+| `takeout.py` | Takeout reader. Reads every ZIP of the export in place, picks the file of each photo, and returns the photos by `url`, the Albums with their Comments and Likes, and the orphan Comments. Refuses an export of selected Albums. Keeps apart the photos in no Album, and lists the urls of each file by size and CRC. Finds the export to compare with, and holds the mark of a finished export. |
 | `media.py` | Media preparer: writes into a photo the date and position it lacks, with ExifTool, converts the videos Synology Photos cannot play, with ffmpeg, and reads the date a file holds. |
 | `paths.py` | NAS path rule. |
 | `description.py` | Photo Description builder. Pure. Holds the layout of the text. |
@@ -199,7 +199,7 @@ The report counts *Files replaced* and *Files moved*.
 
 ## Album Downloads
 
-An Album Download is the "Download all" ZIP of a shared Album. It holds one folder named after the Album, and every file of the Album, with no sidecars. Files that the export holds are byte-identical in the ZIP, so it is compared with the export by size and CRC, read from the ZIPs without unzipping. Google can split an Album in several ZIPs: all the ZIPs holding a folder of one name make one Album Download.
+An Album Download is the "Download all" ZIP of a shared Album. It holds one folder named after the Album, and every file of the Album, with no sidecars. Files that the export holds are byte-identical in the ZIP, so it is compared with the export by size and CRC, read from the ZIPs without unzipping. Google can split an Album in several ZIPs, numbered at the end of their name (`Été-1-001.zip`, `Été-1-002.zip`): they make one Album Download, named `Été-1` in the report. Two Albums can share a title, so their ZIPs stay apart however alike their folders are.
 
 The CLI reads the ZIPs of the `album-downloads` folder that sits next to the export folders (`takeout/album-downloads/` for `takeout/2024-01-01/`). A run on a finished export reads them too, so a ZIP can be added at any time, with the same command. Nothing records that a ZIP was used.
 
@@ -213,9 +213,13 @@ The CLI reads the ZIPs of the `album-downloads` folder that sits next to the exp
 
 **Date of a file known by its content.** The file's `DateTimeOriginal`, then its `QuickTime:CreateDate`, then a date in its name (`IMG-20240829-WA0000.jpg`, at midnight UTC): most WhatsApp files hold no date, and their name always has one. A date from the name is written into the file like any date a file lacks. The date of the ZIP is never used: it changes with each download, and so would the path. A file with no date is not added, and the report lists it under *Album Download files with no date, not added*.
 
+A file with no date does not stop its Album from counting as covered: the report lists it apart.
+
 **Later runs.** The path comes from the content, so the snapshot finds the photo, and a second run with the same ZIP makes no write. Without its ZIP, the photo is not in the run: it stays on the NAS, in its Albums, with its Photo Description. An Album text it carried stays there too, and the next oldest photo gets it as well.
 
-**Same bytes in a later export.** When a Refresh brings under a `url` the bytes of a photo known by its content, and the ZIP is still there, the export item takes its place: it follows the steps of a move, joins every NAS Album of the old item, and the old item is removed last. The report counts it under *Files moved*. Without the ZIP nothing tells that the bytes are the same, so a copy in an Album gives a second item, and a copy outside the Albums stays out.
+**Same bytes in a later export.** When a Refresh brings under a `url` the bytes of a photo known by its content, and the ZIP is still there, the export item takes its place: it follows the steps of a move, joins every NAS Album of the old item, and the old item is removed last. The report counts it under *Files moved*. Without the ZIP nothing tells that the bytes are the same, so a copy in an Album gives a second item, and a copy outside the Albums stays out. Reading a file of the ZIP to find such an item costs time, so a run does it only when the NAS holds another item of that name. A stop during the take-over leaves both items, and the run started again finishes the job.
+
+**Photos gone from the export.** A ZIP is compared with the current export only. A photo deleted in Google Photos after its ZIP was made has no match, so that ZIP adds it again as a photo known by its content, next to the item that stays on the NAS.
 
 **Sure gaps.** The report lists the Albums with orphan Comments, under *Shared Albums where photos are surely missing*, and asks for their Album Download. Only the orphan Comments newer than the newest Album Download of an Album count, so an Album leaves the list once it has one, and comes back when a Refresh brings a newer orphan Comment. The date of an Album Download is the date of the newest file in its ZIPs, which Google sets when it makes the ZIP. Removing a ZIP brings its Album back to the list. A Comment posted after the ZIP on a photo that the ZIP brought counts as new as well: the export cannot tell.
 

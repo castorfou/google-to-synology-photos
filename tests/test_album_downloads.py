@@ -170,7 +170,7 @@ def test_running_again_with_the_same_album_download_adds_nothing(
 
     assert nas.writes == 0
     assert report.uploaded == 0
-    assert report.album_downloads == {"Été": 0}
+    assert report.album_downloads == {"Été-1": 0}
 
 
 def test_a_stopped_run_continues_with_no_second_item(tmp_path: Path) -> None:
@@ -283,6 +283,71 @@ def test_a_saved_copy_takes_over_after_a_stop_at_any_write(tmp_path: Path) -> No
         assert nas.album_contents() == finished.album_contents()
 
 
+def test_bytes_a_later_export_puts_in_the_album_take_over_after_a_stop(
+    tmp_path: Path,
+) -> None:
+    takeout = TakeoutBuilder()
+    takeout.photo(takeout.album("Été"), "IMG_0002.JPG", URL_2)
+    first = takeout.write(tmp_path / "2024-01-01")
+    downloads = write_album_download(
+        tmp_path / "album-downloads", "Été", {"IMG_0001.JPG": THEIRS}
+    )
+    newer = TakeoutBuilder()
+    album = newer.album("Été")
+    newer.photo(album, "IMG_0002.JPG", URL_2)
+    newer.photo(album, "IMG_0001.JPG", URL).data = THEIRS
+    second = newer.write(tmp_path / "2025-01-01")
+
+    def first_run() -> FakeSynologyPhotos:
+        nas = FakeSynologyPhotos()
+        run_import(first, nas, album_downloads=downloads)
+        nas.writes = 0
+        return nas
+
+    finished = first_run()
+    run_import(second, finished, previous=first, album_downloads=downloads)
+    assert finished.paths() == [PHOTO_PATH, PHOTO_2_PATH]
+
+    for stop_after in range(finished.writes):
+        nas = first_run()
+        nas.writes_left = stop_after
+        with pytest.raises(ConnectionError):
+            run_import(second, nas, previous=first, album_downloads=downloads)
+        nas.writes_left = None
+
+        run_import(second, nas, previous=first, album_downloads=downloads)
+
+        assert nas.paths() == [PHOTO_PATH, PHOTO_2_PATH]
+        assert nas.album_contents() == finished.album_contents()
+
+
+def test_a_taken_over_photo_still_follows_its_changed_file(tmp_path: Path) -> None:
+    def export(folder: str, edit: bytes) -> Path:
+        takeout = TakeoutBuilder()
+        album = takeout.album("Été")
+        takeout.photo(album, "IMG_0002.JPG", URL_2)
+        photo = takeout.photo(album, "IMG_0001.JPG", URL, edited=True)
+        photo.data, photo.edited = THEIRS, edit
+        return takeout.write(tmp_path / folder)
+
+    first = export("2024-01-01", jpeg_bytes("first edit"))
+    second = export("2025-01-01", jpeg_bytes("second edit"))
+    downloads = write_album_download(
+        tmp_path / "album-downloads", "Été", {"IMG_0001.JPG": THEIRS}
+    )
+    nas = FakeSynologyPhotos()
+    run_import(first, nas)
+    copy = nas.upload(theirs_path("IMG_0001.JPG"), THEIRS)
+    album_id = nas.albums()[0].id
+    nas.add_to_album(album_id, [copy])
+
+    report = run_import(second, nas, previous=first, album_downloads=downloads)
+
+    assert nas.paths() == [PHOTO_PATH, PHOTO_2_PATH]
+    assert nas.item(PHOTO_PATH).data == jpeg_bytes("second edit")
+    assert report.failed_writes == []
+
+
 def test_two_albums_of_one_title_are_told_apart_by_their_photos(
     tmp_path: Path,
 ) -> None:
@@ -305,6 +370,39 @@ def test_two_albums_of_one_title_are_told_apart_by_their_photos(
         ("Vacances", [PHOTO_PATH, theirs_path()]),
         ("Vacances", [PHOTO_2_PATH]),
     ]
+
+
+def test_the_zips_of_two_albums_of_one_title_stay_apart(tmp_path: Path) -> None:
+    takeout = TakeoutBuilder()
+    first = takeout.photo(
+        takeout.album("Vacances", folder="Vacances"), "IMG_0002.JPG", URL_2
+    )
+    second = takeout.photo(
+        takeout.album("Vacances", folder="Vacances(1)"), "IMG_0001.JPG", URL
+    )
+    export = takeout.write(tmp_path / "2024-01-01")
+    folder = tmp_path / "album-downloads"
+    write_album_download(
+        folder,
+        "Vacances",
+        {"IMG_0002.JPG": first.data},
+        zip_name="Vacances-1-001.zip",
+    )
+    write_album_download(
+        folder,
+        "Vacances",
+        {"IMG_0001.JPG": second.data, "theirs.jpg": THEIRS},
+        zip_name="Vacances-2-001.zip",
+    )
+    nas = FakeSynologyPhotos()
+
+    report = run_import(export, nas, album_downloads=folder)
+
+    assert nas.album_contents() == [
+        ("Vacances", [PHOTO_PATH, theirs_path()]),
+        ("Vacances", [PHOTO_2_PATH]),
+    ]
+    assert report.album_downloads == {"Vacances-1": 0, "Vacances-2": 1}
 
 
 def test_an_album_renamed_since_the_zip_is_found_by_its_photos(tmp_path: Path) -> None:
@@ -398,7 +496,7 @@ def test_the_report_says_how_many_photos_each_album_download_added(
 
     rendered = report.render()
     assert "- Album Downloads used: 1" in rendered
-    assert "- Été (photos added: 2)" in rendered
+    assert "- Été-1 (photos added: 2)" in rendered
 
 
 def test_a_photo_that_did_not_join_its_album_is_not_counted(tmp_path: Path) -> None:
@@ -408,7 +506,7 @@ def test_a_photo_that_did_not_join_its_album_is_not_counted(tmp_path: Path) -> N
 
     report = run_import(export, nas, album_downloads=downloads)
 
-    assert report.album_downloads == {"Été": 0}
+    assert report.album_downloads == {"Été-1": 0}
     assert report.failed_writes == ["Photos of Album 'Été'"]
 
 
@@ -485,7 +583,7 @@ def test_a_run_on_a_finished_export_still_takes_a_new_album_download(
     main(["import", str(export)], connect=lambda ask_again: nas)
 
     assert nas.album_contents() == [("Été", sorted([PHOTO_PATH, theirs_path()]))]
-    assert "- Été (photos added: 1)" in capsys.readouterr().out
+    assert "- Été-1 (photos added: 1)" in capsys.readouterr().out
 
 
 def test_all_the_zips_of_an_album_make_one_album_download(tmp_path: Path) -> None:
@@ -501,7 +599,7 @@ def test_all_the_zips_of_an_album_make_one_album_download(tmp_path: Path) -> Non
 
     report = run_import(export, nas, album_downloads=folder)
 
-    assert report.album_downloads == {"Été": 1}
+    assert report.album_downloads == {"Été-1": 1}
     assert nas.album_contents() == [("Été", sorted([PHOTO_PATH, theirs_path()]))]
 
 

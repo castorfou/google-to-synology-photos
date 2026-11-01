@@ -33,7 +33,7 @@ class Report:
     no_file: list[str] = field(default_factory=list)
     orphan_comments: list[str] = field(default_factory=list)
     sure_gaps: list[str] = field(default_factory=list)
-    # How many photos joined the Album of each Album Download, by its folder.
+    # How many photos joined the Album of each Album Download, by its name.
     album_downloads: dict[str, int] = field(default_factory=dict)
     unknown_album_downloads: list[str] = field(default_factory=list)
     undated_files: list[str] = field(default_factory=list)

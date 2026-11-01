@@ -2,7 +2,7 @@
 
 ``Photos/Google Photos/<year taken>/<original name>__<6 chars>.<ext>``, where the
 6 chars are the first base32 characters (lowercase) of the SHA-256 of the url. A
-photo known only from an Album Download has no url: they come from its content.
+photo known only from an Album Download has no url of Google: the 6 chars come from its content.
 A converted video has the extension of what it became.
 The rule is deterministic, so a photo gets the same path in every export, and is
 found on the NAS by its identity: its path without the extension, which a
@@ -42,6 +42,21 @@ def year_folder(photo: Photo) -> str:
 def identity_of_path(path: str) -> str:
     """Return the identity of the photo at a NAS path."""
     return EXTENSION_AFTER_HASH.sub(r"\1", path)
+
+
+def identity_of(photo: Photo) -> str:
+    """Return the identity of photo."""
+    return identity_of_path(nas_path(photo))
+
+
+def name_of_identity(identity: str) -> str:
+    """Return the name part of an identity, as name_stem gives it."""
+    return identity.rpartition("/")[2].rpartition("__")[0]
+
+
+def name_stem(name: str) -> str:
+    """Return a file name as it sits in a NAS path, without its extension."""
+    return UNSAFE.sub("_", name.rpartition(".")[0] or name)
 
 
 def nas_path(photo: Photo, extension: str | None = None) -> str:

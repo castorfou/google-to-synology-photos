@@ -19,6 +19,8 @@ from google_to_synology_photos.takeout import Album, Export, FileKey, Photo
 # In the folder that holds the export folders.
 ALBUM_DOWNLOADS_FOLDER = "album-downloads"
 # 299 of 345 JPGs of a measured Album hold no date, and all have one in their name.
+# Google numbers the ZIPs of one Album Download: Été-1-001.zip, Été-1-002.zip.
+ZIP_PART = re.compile(r"-\d+$")
 DATE_IN_NAME = re.compile(r"(?<!\d)(?:19|20)\d{6}(?!\d)")
 
 
@@ -32,20 +34,25 @@ class DownloadedFile:
 
     @property
     def name(self) -> str:
+        """Return the file name, without its folder."""
         return self.member.rpartition("/")[2]
 
     def read(self) -> bytes:
+        """Return the bytes of the file, read from its ZIP."""
         with zipfile.ZipFile(self.zip_path) as zf:
             return zf.read(self.member)
 
 
 @dataclass
 class AlbumDownload:
-    """The files of one Album, from all the ZIPs that hold its folder.
+    """The files of one "Download all", from all its ZIPs.
 
-    made is the date of the newest ZIP: Google dates the files when it makes one.
+    name is that of its ZIPs, without their number: two Albums can share a title.
+    folder is the folder inside them, named after the Album.
+    made is the date of the newest file: Google dates them when it makes the ZIP.
     """
 
+    name: str
     folder: str
     made: datetime
     files: list[DownloadedFile] = field(default_factory=list)
@@ -55,14 +62,16 @@ def read_album_downloads(folder: Path) -> list[AlbumDownload]:
     """Read the ZIPs of folder into their Album Downloads, without unzipping."""
     downloads: dict[str, AlbumDownload] = {}
     for zip_path in sorted(folder.glob("*.zip")):
+        name = ZIP_PART.sub("", zip_path.stem)
         with zipfile.ZipFile(zip_path) as zf:
             for info in zf.infolist():
                 if info.is_dir():
                     continue
-                folder_name, slash, _ = info.filename.partition("/")
-                name = folder_name if slash else zip_path.stem
+                inside, slash, _ = info.filename.partition("/")
                 made = datetime(*info.date_time, tzinfo=UTC)
-                download = downloads.setdefault(name, AlbumDownload(name, made))
+                download = downloads.setdefault(
+                    name, AlbumDownload(name, inside if slash else name, made)
+                )
                 download.made = max(download.made, made)
                 download.files.append(
                     DownloadedFile(zip_path, info.filename, (info.file_size, info.CRC))
@@ -78,6 +87,7 @@ def paired_album(download: AlbumDownload, export: Export) -> Album | None:
     """
 
     def closeness(album: Album) -> tuple[int, bool]:
+        """Return how many files album shares, and whether its title matches."""
         urls = set(album.urls)
         shared = sum(
             bool(urls.intersection(export.urls_of_file.get(file.key, [])))

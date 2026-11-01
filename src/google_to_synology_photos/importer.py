@@ -8,7 +8,7 @@ running again after a stop, from any computer, continues without a state file.
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from google_to_synology_photos.album_download import (
@@ -19,7 +19,14 @@ from google_to_synology_photos.album_download import (
 )
 from google_to_synology_photos.description import comment_line, photo_descriptions
 from google_to_synology_photos.media import ConversionFailedError, MediaPreparer
-from google_to_synology_photos.paths import LIBRARY_ROOT, identity_of_path, nas_path
+from google_to_synology_photos.paths import (
+    LIBRARY_ROOT,
+    identity_of,
+    identity_of_path,
+    name_of_identity,
+    name_stem,
+    nas_path,
+)
 from google_to_synology_photos.report import Report
 from google_to_synology_photos.synology import NasAlbum, SynologyPhotos
 from google_to_synology_photos.takeout import Album, Export, Photo, read_export
@@ -44,6 +51,20 @@ class Snapshot:
     albums: dict[NasAlbum, set[int]]
     own_albums: dict[NasAlbum, set[int]]
     twins: dict[str, tuple[str, int]]
+
+
+@dataclass
+class AddedPhotos:
+    """What an Album Download brought to its Album.
+
+    urls holds the photos that joined the Album. items_to_replace holds, by url,
+    the item its bytes got when only an Album Download knew them: the export item
+    takes its place.
+    """
+
+    album: Album
+    urls: set[str] = field(default_factory=set)
+    items_to_replace: dict[str, tuple[str, int]] = field(default_factory=dict)
 
 
 def take_snapshot(nas: SynologyPhotos) -> Snapshot:
@@ -184,55 +205,52 @@ def _add_album_download(
     download: AlbumDownload,
     export: Export,
     snapshot: Snapshot,
-    earlier_photos: dict[str, Photo],
     media: MediaPreparer,
     report: Report,
-) -> tuple[Album, set[str]] | None:
+) -> AddedPhotos | None:
     """Put the photos of download in its Album; the export knows only some.
 
     Bytes the export holds count as its photo, which brings its Caption: a copy
-    saved outside the Albums joins this one, and takes the place of the item the
-    same bytes got when they were known only from an Album Download.
-
-    Return the Album and the urls this added to it, or None if it has no Album.
+    saved outside the Albums joins this one. Return what it added, or None if it
+    has no Album.
     """
     album = paired_album(download, export)
     if album is None:
-        report.unknown_album_downloads.append(download.folder)
+        report.unknown_album_downloads.append(download.name)
         return None
     album.downloaded = max(album.downloaded or download.made, download.made)
-    report.album_downloads[download.folder] = 0
-    added: set[str] = set()
+    report.album_downloads[download.name] = 0
+    added = AddedPhotos(album)
+    held_names: dict[str, set[str]] = {}
+    for identity in snapshot.items:
+        held_names.setdefault(name_of_identity(identity), set()).add(identity)
     for file in download.files:
         url = min(
             export.urls_of_file.get(file.key, []),
             key=lambda u: (u not in album.urls, u not in export.photos),
             default=None,
         )
-        # Most files of an Album: nothing to read, on every run.
-        if (
-            url in album.urls
-            and identity_of_path(nas_path(export.photos[url])) in snapshot.items
-        ):
-            continue
-        by_content = photo_of_file(file, media.date_in_file)
         if url is not None:
             photo = export.photos.get(url) or export.outside_albums[url]
-            if (
-                by_content is not None
-                and identity_of_path(nas_path(by_content)) in snapshot.items
-            ):
-                earlier_photos[url] = by_content
-        elif by_content is not None:
-            photo = by_content
+            # The bytes may sit on the NAS as a photo known by its content. Only
+            # reading the file tells, and most files of an Album have no such item.
+            if held_names.get(name_stem(file.name), set()) - {identity_of(photo)}:
+                as_download = photo_of_file(file, media.date_in_file)
+                if as_download is not None:
+                    item = snapshot.items.get(identity_of(as_download))
+                    if item is not None:
+                        added.items_to_replace[url] = item
         else:
-            report.undated_files.append(f"{download.folder}: {file.name}")
-            continue
+            as_download = photo_of_file(file, media.date_in_file)
+            if as_download is None:
+                report.undated_files.append(f"{download.folder}: {file.name}")
+                continue
+            photo = as_download
         export.photos.setdefault(photo.url, photo)
         if photo.url not in album.urls:
             album.urls.append(photo.url)
-            added.add(photo.url)
-    return album, added
+            added.urls.add(photo.url)
+    return added
 
 
 def _sure_gaps(export: Export) -> list[str]:
@@ -280,23 +298,22 @@ def run_import(
     with MediaPreparer() as media:
         snapshot = take_snapshot(nas)
         added_by = {
-            download.folder: added
+            download.name: added
             for download in downloads
-            if (
-                added := _add_album_download(
-                    download, export, snapshot, earlier_photos, media, report
-                )
-            )
+            if (added := _add_album_download(download, export, snapshot, media, report))
+        }
+        items_to_replace = {
+            url: item
+            for added in added_by.values()
+            for url, item in added.items_to_replace.items()
         }
         report.sure_gaps = _sure_gaps(export)
         for number, (url, photo) in enumerate(export.photos.items(), start=1):
             progress("Photos and videos", number, len(export.photos))
-            identity = identity_of_path(nas_path(photo))
+            identity = identity_of(photo)
             known = snapshot.items.get(identity)
             earlier = earlier_photos.get(url)
-            earlier_identity = (
-                identity if earlier is None else identity_of_path(nas_path(earlier))
-            )
+            earlier_identity = identity if earlier is None else identity_of(earlier)
             # Still there after a move stopped halfway: the move goes on.
             left_behind = (
                 None
@@ -313,13 +330,13 @@ def run_import(
                 sent = _send(photo, media, nas, report, known[0] if known else None)
                 if sent is None:
                     # What is on the NAS stays, in its Albums and with its text.
-                    if kept := known or left_behind:
+                    if kept := known or left_behind or items_to_replace.get(url):
                         paths[url], item_ids[url] = kept
                     continue
             else:
                 sent = known
             paths[url], item_ids[url] = sent
-            replaced = [left_behind]
+            replaced = [left_behind, items_to_replace.get(url)]
             if replacing:
                 replaced += [known, snapshot.twins.get(identity)]
             taken_over = [
@@ -329,7 +346,7 @@ def run_import(
             ]
             if not all(taken_over):
                 continue
-            if left_behind is not None:
+            if left_behind is not None or url in items_to_replace:
                 report.moved += 1
             elif replacing:
                 report.replaced += 1
@@ -360,10 +377,10 @@ def run_import(
                     report.failed_writes.append(f"Name of Album {album.title!r}")
         missing = [item for item in items if item not in held]
         if missing and _add_to_album(album_id, album.title, missing, nas, report):
-            for folder, (download_album, urls) in added_by.items():
-                if download_album is album:
-                    joined = {item_ids[url] for url in urls if url in item_ids}
-                    report.album_downloads[folder] += len(joined & set(missing))
+            for name, added in added_by.items():
+                if added.album is album:
+                    joined = {item_ids[url] for url in added.urls if url in item_ids}
+                    report.album_downloads[name] += len(joined & set(missing))
 
     descriptions = photo_descriptions(export)
     for number, (url, item_id) in enumerate(item_ids.items(), start=1):

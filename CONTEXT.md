@@ -27,7 +27,7 @@ One download of the Household Account's Google Photos content produced by Google
 _Avoid_: dump, backup, archive
 
 **Album Download**:
-The files of one shared Album downloaded from Google Photos ("Download all"), used only to add the photos other Contributors put in that Album, which are missing from the Takeout Export. Optional, and added whenever the user wants.
+The files of one shared Album downloaded from Google Photos ("Download all"), used to add to that Album the photos other Contributors put there, which are missing from the Takeout Export. Its bytes also tell which photos of the Takeout Export belong in the Album, and its date tells which Orphan Comments are new. Optional, and added whenever the user wants.
 _Avoid_: album export, album takeout
 
 **Sure gap**:
