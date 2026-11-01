@@ -89,21 +89,23 @@ def pair_albums(
 ) -> list[NasAlbum | None]:
     """Return the NAS Album of each Album, one to one; None if it has none.
 
-    A NAS Album of the same title pairs on one shared photo: a run stopped while
-    filling an Album leaves it with a part of its photos. Under another title, it
-    must hold more than half of the Album's photos, or a new Album would take over
-    the NAS Album of a deleted one. The same title goes first, so that a part of a
-    split Album keeps it, then the pair sharing the most photos. An Album left
-    over takes an empty NAS Album of its title: a run stopped between creating an
-    Album and filling it leaves one.
+    A NAS Album must hold more than half of the Album's photos, or a new Album
+    would take over the NAS Album of a deleted one. An Album with no such NAS Album
+    can pair with one of its title sharing a photo: a run stopped while filling an
+    Album leaves it with a part of its photos. The same title goes first, so that a
+    part of a split Album keeps it, then the pair sharing the most photos. An Album
+    left over takes an empty NAS Album of its title: a run stopped between creating
+    an Album and filling it leaves one.
     """
-    candidates = [
-        (album.title != nas_album.name, -len(items & held), index, nas_album.id)
-        for index, (album, items) in enumerate(zip(albums, wanted, strict=True))
-        for nas_album, held in on_nas.items()
-        if (album.title == nas_album.name and items & held)
-        or 2 * len(items & held) > len(items)
-    ]
+    candidates = []
+    for index, (album, items) in enumerate(zip(albums, wanted, strict=True)):
+        shared = {nas_album: len(items & held) for nas_album, held in on_nas.items()}
+        most = [n for n, count in shared.items() if 2 * count > len(items)]
+        titled = [n for n, count in shared.items() if count and n.name == album.title]
+        candidates += [
+            (nas_album.name != album.title, -shared[nas_album], index, nas_album.id)
+            for nas_album in most or titled
+        ]
     by_id = {nas_album.id: nas_album for nas_album in on_nas}
     paired: list[NasAlbum | None] = [None] * len(albums)
     for _, _, index, nas_id in sorted(candidates):
