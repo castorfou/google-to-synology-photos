@@ -157,7 +157,15 @@ A run keeps no record of the NAS Library. It writes only what the snapshot shows
 
 The snapshot holds every item under `Photos/Google Photos/`, and every normal Album made only of those items, with its items. An Album holding any other photo is the Household's own: a run never pairs, renames or grows it. The only exception is a photo that moves, whose new item takes the place of the old one there. An empty Album counts as made of NAS Library photos.
 
-Each Album of the export is paired one to one with a NAS Album. The pair sharing the most photos goes first, and the same title settles a tie. An Album left over takes an empty NAS Album of its title, which is what a run stopped between creating and filling an Album leaves. An Album with no pair is created. A run only ever adds photos to a NAS Album, apart from the old item of a moved photo.
+Each Album of the export is paired one to one with a NAS Album:
+
+- **Who can pair.** A NAS Album of the same title that shares at least one photo, which is what a run stopped while filling an Album leaves, since photos join in batches. Under another title, a NAS Album that holds more than half of the photos of the export Album. Exactly half is not enough.
+- **Who goes first.** The same title, then the pair sharing the most photos.
+- **Left over.** An Album left over takes an empty NAS Album of its title, which is what a run stopped between creating and filling an Album leaves. An Album with no pair is created.
+
+The share is counted on the export Album, not on the NAS Album: NAS Albums only grow, so their share would fall with each Refresh. In the real export of 252 Albums, no photo is in two Albums, and the 3 Albums of a later export share all their photos with their earlier selves. Any threshold therefore fits the export as it stands, and the rule comes from the cases it must settle: `New` {B,C} must leave a deleted `Old` {A,B} alone, so half is not enough; a rename that adds photos must not create a duplicate, so the threshold stays as low as that allows. A renamed Album whose photos at least double is created, and the NAS Album stays under its old title.
+
+A run only ever adds photos to a NAS Album, apart from the old item of a moved photo.
 
 The report counts the photos found under *Already on the NAS*. Its lists cover the current run: a file sent without its date in an earlier run is not listed again. A failed conversion is tried again at each run.
 
@@ -165,9 +173,10 @@ The report counts the photos found under *Already on the NAS*. Its lists cover t
 
 A Refresh is a run on a newer Takeout Export, and it follows the same steps. The NAS Library ends as the export says, whatever was changed in Google Photos or on the NAS:
 
-- **Album title.** A paired Album whose name differs from the Google Photos title is renamed. This follows a rename in Google Photos and undoes a rename on the NAS. Pairing goes by photos, so two Albums with the same title stay separate.
+- **Album title.** A paired Album whose name differs from the Google Photos title is renamed. This follows a rename in Google Photos, with photos added or removed, and undoes a rename on the NAS. Pairing needs a shared photo, so two Albums with the same title stay separate.
 - **Album content.** New Albums are created and new photos join their Album. A photo removed from an Album in Google Photos stays in the NAS Album.
-- **Deleted in Google Photos.** An Album or a photo missing from the export stays on the NAS, with its Photo Description. Pairing goes by shared photos only, so an Album of the export with no better pair takes over a NAS Album it shares a photo with, and renames it: this happens to the NAS Album of a deleted Album, and to the old Album when an Album is split in Google Photos.
+- **Deleted in Google Photos.** An Album or a photo missing from the export stays on the NAS, with its Photo Description. A new Album sharing half of its photos or fewer with a deleted Album is created beside it. A new Album sharing more than half takes the NAS Album over and renames it.
+- **Split in Google Photos.** The part that keeps the title stays paired with the NAS Album, which keeps all its photos, and the other parts are created. When no part keeps the title, a part holding more than half of its photos from the NAS Album takes it over and renames it.
 - **Text.** A Photo Description that differs from the export is written again, which also covers a changed Caption, new Comments and Likes, deleted Comments and edits made on the NAS.
 - **Deleted on the NAS.** A photo is sent again, joins its Albums and gets its text. An Album is recreated.
 - **Files.** A file that changed is replaced or moved (see [Files that changed](#files-that-changed)).

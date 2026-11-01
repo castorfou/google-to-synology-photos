@@ -40,6 +40,47 @@ def test_an_album_renamed_in_google_photos_is_renamed_on_the_nas(
     assert "Albums renamed: 1" in report.render()
 
 
+def test_an_album_renamed_with_a_photo_added_is_not_duplicated(tmp_path: Path) -> None:
+    before = TakeoutBuilder()
+    album = before.album("Été")
+    before.photo(album, "IMG_0001.JPG", URL)
+    before.photo(album, "IMG_0002.JPG", URL_2)
+    newer = TakeoutBuilder()
+    album = newer.album("Été à la mer")
+    newer.photo(album, "IMG_0001.JPG", URL)
+    newer.photo(album, "IMG_0002.JPG", URL_2)
+    newer.photo(album, "IMG_0003.JPG", URL_3)
+    nas = FakeSynologyPhotos()
+    run_import(before.write(tmp_path / "2024-01-01"), nas)
+
+    report = run_import(newer.write(tmp_path / "2025-01-01"), nas)
+
+    assert nas.album_contents() == [
+        ("Été à la mer", [PHOTO_PATH, PHOTO_2_PATH, PHOTO_3_PATH])
+    ]
+    assert report.albums_renamed == 1
+    assert report.albums_created == 0
+
+
+def test_an_album_renamed_with_a_photo_removed_is_not_duplicated(
+    tmp_path: Path,
+) -> None:
+    before = TakeoutBuilder()
+    album = before.album("Été")
+    before.photo(album, "IMG_0001.JPG", URL)
+    before.photo(album, "IMG_0002.JPG", URL_2)
+    newer = TakeoutBuilder()
+    newer.photo(newer.album("Été à la mer"), "IMG_0001.JPG", URL)
+    nas = FakeSynologyPhotos()
+    run_import(before.write(tmp_path / "2024-01-01"), nas)
+
+    report = run_import(newer.write(tmp_path / "2025-01-01"), nas)
+
+    assert nas.album_contents() == [("Été à la mer", [PHOTO_PATH, PHOTO_2_PATH])]
+    assert report.albums_renamed == 1
+    assert report.albums_created == 0
+
+
 def test_a_rename_that_does_not_stick_is_listed_in_the_report(tmp_path: Path) -> None:
     before = TakeoutBuilder()
     before.photo(before.album("Été"), "IMG_0001.JPG", URL)
@@ -154,6 +195,56 @@ def test_albums_and_photos_deleted_in_google_photos_stay_on_the_nas(
 
     assert nas.album_contents() == [("Noël", [PHOTO_2_PATH]), ("Été", [PHOTO_PATH])]
     assert nas.item(PHOTO_PATH).description == "La plage"
+
+
+def test_a_new_album_sharing_half_of_its_photos_leaves_a_deleted_album_alone(
+    tmp_path: Path,
+) -> None:
+    before = TakeoutBuilder()
+    album = before.album("Old")
+    before.photo(album, "IMG_0001.JPG", URL)
+    before.photo(album, "IMG_0002.JPG", URL_2)
+    newer = TakeoutBuilder()
+    album = newer.album("New")
+    newer.photo(album, "IMG_0002.JPG", URL_2)
+    newer.photo(album, "IMG_0003.JPG", URL_3)
+    nas = FakeSynologyPhotos()
+    run_import(before.write(tmp_path / "2024-01-01"), nas)
+
+    report = run_import(newer.write(tmp_path / "2025-01-01"), nas)
+
+    assert nas.album_contents() == [
+        ("New", [PHOTO_2_PATH, PHOTO_3_PATH]),
+        ("Old", [PHOTO_PATH, PHOTO_2_PATH]),
+    ]
+    assert report.albums_created == 1
+    assert report.albums_renamed == 0
+
+
+def test_an_album_split_in_google_photos_keeps_its_title_on_the_nas(
+    tmp_path: Path,
+) -> None:
+    before = TakeoutBuilder()
+    album = before.album("Trip")
+    before.photo(album, "IMG_0001.JPG", URL)
+    before.photo(album, "IMG_0002.JPG", URL_2)
+    before.photo(album, "IMG_0003.JPG", URL_3)
+    newer = TakeoutBuilder()
+    newer.photo(newer.album("Trip"), "IMG_0001.JPG", URL)
+    best = newer.album("Best")
+    newer.photo(best, "IMG_0002.JPG", URL_2)
+    newer.photo(best, "IMG_0003.JPG", URL_3)
+    nas = FakeSynologyPhotos()
+    run_import(before.write(tmp_path / "2024-01-01"), nas)
+
+    report = run_import(newer.write(tmp_path / "2025-01-01"), nas)
+
+    assert nas.album_contents() == [
+        ("Best", [PHOTO_2_PATH, PHOTO_3_PATH]),
+        ("Trip", [PHOTO_PATH, PHOTO_2_PATH, PHOTO_3_PATH]),
+    ]
+    assert report.albums_created == 1
+    assert report.albums_renamed == 0
 
 
 def test_a_hand_made_album_with_a_photo_outside_the_library_is_untouched(
