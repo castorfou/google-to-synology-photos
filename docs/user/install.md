@@ -110,6 +110,6 @@ The tool reads the ZIPs where they are on the NAS, so your computer must see the
 
     The folder is now `/mnt/takeout`.
 
-If the computer cannot connect, check in DSM that **Control Panel > File Services > SMB** is on.
+If the computer cannot connect, check in DSM that **Control Panel > File Services > SMB** is on, and that the NAS Account is allowed **SMB** in **Control Panel > User & Group > User > Edit > Applications**.
 
 Next: [get the Takeout Export](takeout-export.md).

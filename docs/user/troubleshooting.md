@@ -16,7 +16,7 @@ A stop during a Refresh may replace the same changed files again at the next run
 | `ffmpeg was not found` | [Install ffmpeg](install.md#install-ffmpeg-and-exiftool), with its `ffprobe`. Nothing was uploaded. |
 | `this looks like an export of selected Albums` | Request a [full Takeout Export](takeout-export.md#request-the-export), with all photo albums. Nothing was imported. |
 | `Wrong user name or password.` | Run the command again and type the password. To change the user name, run `g2s login`. |
-| `The NAS refused the login (error ...)` | Check that the NAS Account is active and may use Synology Photos. Error 404 means a wrong 2FA code. |
+| `The NAS refused the login (error ...)` | Check that the NAS Account is active and may use Synology Photos. Error 404 means a wrong 2FA code. Error 406 means that 2FA is enforced for the NAS Account but not set up yet: [set it up](nas-setup.md#turn-on-2fa-for-the-nas-account-optional). |
 | `The NAS certificate was not trusted.` | Run `g2s login`, and answer `yes` if the fingerprint is the right one. |
 | `the NAS certificate is not the one trusted before` | Run `g2s login` to check and trust the new certificate. This happens when DSM renews it. |
 | `cannot reach the NAS` | Check that the NAS is on, that the address is right, and that you are on its network or VPN. |
