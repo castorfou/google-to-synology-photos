@@ -142,3 +142,14 @@ Pour la suite : /clear, puis /mattpocock-skills:implement #49.
 /clear, puis /mattpocock-skills:implement #39.
 
 /clear, puis /mattpocock-skills:implement #54.
+
+# Nov,8 26
+
+/clear, puis /mattpocock-skills:implement #55.
+
+
+/clear, puis /mattpocock-skills:implement #56.
+
+/clear, puis /mattpocock-skills:implement #61.
+
+/clear, puis /mattpocock-skills:implement #64.
