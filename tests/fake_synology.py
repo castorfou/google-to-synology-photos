@@ -12,21 +12,33 @@
 - Writes on unknown items answer success and do nothing; writes on an unknown
   Album fail.
 - An upload or an overwrite to a path of ``refused_paths`` fails, as a file the
-  NAS refuses would. No such refusal has been seen on the DS923: the contract
-  test does not check it.
+  NAS refuses would, with the code the DS923 answers to a file Synology Photos
+  does not take.
+- An overwrite to a path of ``slow_reindex_paths`` replaces the file, then fails
+  as Synology Photos taking too long to read it again would.
 
 ``tests/test_contract.py`` checks these claims against the DS923.
 """
 
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import PurePosixPath
 
-from google_to_synology_photos.synology import NasAlbum, SynologyError
+from google_to_synology_photos.synology import (
+    FileRefusedError,
+    NasAlbum,
+    NotReindexedError,
+    SynologyError,
+)
 
 
 UNKNOWN_ALBUM = 609
-# No refusal of a file has been seen on the DS923: the code is made up.
-REFUSED_FILE = 1000
+# What the DS923 answers to the upload of a file Synology Photos does not take.
+UNSUPPORTED_FILE = 620
+# Extensions the DS923 refuses so; a damaged photo with a photo extension passes.
+NOT_MEDIA = ("", ".txt", ".exe")
+# What the DS923 answers to any call once the session is gone.
+SESSION_MISSING = 119
 
 
 @dataclass
@@ -54,9 +66,17 @@ class FakeSynologyPhotos:
         self.writes = 0
         self.writes_left: int | None = None
         self.refused_paths: set[str] = set()
+        self.slow_reindex_paths: set[str] = set()
+        self._session = True
 
-    def _write(self) -> None:
+    def _call(self, call: str) -> None:
+        """Fail as every call does once the session is gone."""
+        if not self._session:
+            raise SynologyError(SESSION_MISSING, call)
+
+    def _write(self, call: str) -> None:
         """Count a write call, or cut the connection."""
+        self._call(call)
         if self.writes_left == 0:
             raise ConnectionError("connection lost")
         if self.writes_left is not None:
@@ -70,9 +90,9 @@ class FakeSynologyPhotos:
     # SynologyPhotos interface
 
     def upload(self, path: str, data: bytes, mtime: datetime) -> int:
-        self._write()
-        if path in self.refused_paths:
-            raise SynologyError(REFUSED_FILE, "upload")
+        self._write("upload")
+        if path in self.refused_paths or PurePosixPath(path).suffix in NOT_MEDIA:
+            raise FileRefusedError(UNSUPPORTED_FILE, "upload")
         existing = self.item_at(path)
         if existing is not None:
             return existing
@@ -85,6 +105,8 @@ class FakeSynologyPhotos:
         self._items[item_id].data = data
         self._items[item_id].time = mtime
         self._items[item_id].description = ""
+        if path in self.slow_reindex_paths:
+            raise NotReindexedError(item_id, "not read again in time")
         if self.overwrite_keeps_id:
             return item_id
         item = self._items.pop(item_id)
@@ -96,58 +118,68 @@ class FakeSynologyPhotos:
         return item.id
 
     def folder_items(self, folder: str) -> dict[str, int]:
+        self._call("folder_items")
         prefix = f"{folder}/"
         return {i.path: i.id for i in self._items.values() if i.path.startswith(prefix)}
 
     def item_at(self, path: str) -> int | None:
+        self._call("item_at")
         return next((i.id for i in self._items.values() if i.path == path), None)
 
     def delete_item(self, item_id: int) -> None:
-        self._write()
+        self._write("delete_item")
         self._items.pop(item_id, None)
         for held in self._album_items.values():
             if item_id in held:
                 held.remove(item_id)
 
     def set_description(self, item_id: int, text: str) -> None:
-        self._write()
+        self._write("set_description")
         if item_id in self._items and self.descriptions_stick:
             self._items[item_id].description = text
 
     def description(self, item_id: int) -> str | None:
+        self._call("description")
         item = self._items.get(item_id)
         return item.description if item else None
 
     def date(self, item_id: int) -> datetime | None:
+        self._call("date")
         item = self._items.get(item_id)
         return item.time if item else None
 
     def create_album(self, name: str) -> int:
-        self._write()
+        self._write("create_album")
         album_id = self._new_id()
         self._album_names[album_id] = name
         self._album_items[album_id] = []
         return album_id
 
     def rename_album(self, album_id: int, name: str) -> None:
-        self._write()
+        self._write("rename_album")
         self._check_album(album_id, "rename_album")
         if self.album_names_stick:
             self._album_names[album_id] = name
 
     def add_to_album(self, album_id: int, item_ids: list[int]) -> None:
-        self._write()
+        self._write("add_to_album")
         self._check_album(album_id, "add_to_album")
         held = self._album_items[album_id]
         held += [i for i in item_ids if i in self._items and i not in held]
 
     def albums(self) -> list[NasAlbum]:
+        self._call("albums")
         return [NasAlbum(i, name) for i, name in self._album_names.items()]
 
     def album_items(self, album_id: int) -> list[int]:
+        self._call("album_items")
         return list(self._album_items.get(album_id, []))
 
     # What the Household can do on the NAS
+
+    def end_session(self) -> None:
+        """End the session, as an expiry or a logout elsewhere would."""
+        self._session = False
 
     def delete_album(self, album_id: int) -> None:
         """Delete an Album: its photos stay."""

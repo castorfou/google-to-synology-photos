@@ -62,6 +62,7 @@ The first lines count what the run did. Then come lists, and most of them should
 |---|---|---|
 | **Writes that did not stick** | The NAS did not keep something. | Run the same command again. |
 | **Files the NAS refused, not uploaded** | The NAS answered this upload with an error. The run went on with the other files. A photo already on the NAS at that path stays in its Albums and keeps its text. | Each run tries it again. If the NAS refuses it every time, check that the NAS has free space and that Synology Photos accepts this kind of file. It stays safe in the ZIPs. |
+| **Files replaced, not yet read again by Synology Photos** | The new file is on the NAS, but Synology Photos was still reading it after 10 minutes. It can still change its Photo Description. | Run the same command again later: it writes back the Photo Descriptions that changed. |
 | **Files sent without their missing date or position** | ExifTool could not write into this file. It is on the NAS, and may show the wrong date. | Nothing to fix with the tool. |
 | **Videos that failed to convert, not uploaded** | This video is not on the NAS. | Each run tries it again. It stays safe in the ZIPs. |
 | **Album photos with no file in the export** | An Album lists this photo, but no ZIP holds it. | Check that you copied every ZIP. |

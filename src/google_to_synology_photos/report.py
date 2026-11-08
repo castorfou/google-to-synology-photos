@@ -10,6 +10,10 @@ ASK_FOR_ALBUM_DOWNLOAD = (
     'Use "Download all" on these Albums in Google Photos, put each ZIP in the '
     "`album-downloads` folder next to the export folders, and run g2s again."
 )
+CHECK_AGAIN_LATER = (
+    "Synology Photos can still change their Photo Description. Run g2s again "
+    "later: it writes back the Photo Descriptions that changed."
+)
 
 
 @dataclass
@@ -29,6 +33,9 @@ class Report:
     likes_written: int = 0
     failed_writes: list[str] = field(default_factory=list)
     failed_uploads: list[str] = field(default_factory=list)
+    # Replaced, but Synology Photos had not read the new file again: it can still
+    # change their Photo Description, which the next run checks.
+    not_read_again: list[str] = field(default_factory=list)
     metadata_not_written: list[str] = field(default_factory=list)
     failed_conversions: list[str] = field(default_factory=list)
     no_file: list[str] = field(default_factory=list)
@@ -70,6 +77,10 @@ class Report:
         lines += [f"- {w}" for w in self.failed_writes] or ["None."]
         lines += ["", "## Files the NAS refused, not uploaded", ""]
         lines += [f"- {p}" for p in self.failed_uploads] or ["None."]
+        lines += ["", "## Files replaced, not yet read again by Synology Photos", ""]
+        if self.not_read_again:
+            lines += [CHECK_AGAIN_LATER, ""]
+        lines += [f"- {p}" for p in self.not_read_again] or ["None."]
         lines += ["", "## Files sent without their missing date or position", ""]
         lines += [f"- {p}" for p in self.metadata_not_written] or ["None."]
         lines += ["", "## Videos that failed to convert, not uploaded", ""]

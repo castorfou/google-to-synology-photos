@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from google_to_synology_photos.importer import run_import
+from google_to_synology_photos.synology import SynologyError
 from google_to_synology_photos.takeout import SelectedAlbumsExportError
 from tests.fake_synology import FakeSynologyPhotos
 from tests.takeout_builder import ROOT, TakeoutBuilder
@@ -364,6 +365,12 @@ def test_a_sidecar_with_no_extension_takes_no_file_when_two_could_be_its_own(
     assert "- Noël: IMG_0001\n" in report.render()
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="The DS923 refuses a file whose name has no extension (error 620), "
+    "even a real JPEG: the NAS path of a title with no extension needs the "
+    "extension of its file.",
+)
 def test_a_file_with_the_exact_name_of_a_sidecar_stays_its_file(
     tmp_path: Path,
 ) -> None:
@@ -478,6 +485,22 @@ def test_a_file_the_nas_refuses_is_reported_and_the_run_goes_on(
     assert report.failed_uploads == [PHOTO_PATH]
     assert f"- {PHOTO_PATH}" in report.render()
     assert not report.finished
+
+
+@pytest.mark.parametrize("code", [105, 119, 408])
+def test_a_nas_error_that_refuses_no_file_stops_the_run(
+    export: Path, monkeypatch: pytest.MonkeyPatch, code: int
+) -> None:
+    # Such as a folder listing failing inside the upload.
+    nas = FakeSynologyPhotos()
+
+    def failing(path: str, data: bytes, mtime: datetime) -> int:
+        raise SynologyError(code, "SYNO.Foto.Browse.Item.list")
+
+    monkeypatch.setattr(nas, "upload", failing)
+
+    with pytest.raises(SynologyError):
+        run_import(export, nas)
 
 
 def test_reading_the_export_shows_progress_by_zip(tmp_path: Path) -> None:

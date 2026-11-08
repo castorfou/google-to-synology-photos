@@ -634,6 +634,35 @@ def test_a_replacement_the_nas_refuses_keeps_the_photo_as_it_was(
     assert report.failed_uploads == [PHOTO_PATH]
 
 
+def test_a_replacement_not_read_again_in_time_is_reported_and_the_run_goes_on(
+    tmp_path: Path,
+) -> None:
+    before = TakeoutBuilder()
+    before.photo(before.album("Été"), "IMG_0001.JPG", URL, caption="La plage")
+    newer = TakeoutBuilder()
+    newer.photo(
+        newer.album("Été"), "IMG_0001.JPG", URL, caption="La plage", edited=True
+    )
+    first = before.write(tmp_path / "2024-01-01")
+    second = newer.write(tmp_path / "2025-01-01")
+    nas = FakeSynologyPhotos()
+    run_import(first, nas)
+    sent = nas.item(PHOTO_PATH).data
+    nas.slow_reindex_paths.add(PHOTO_PATH)
+
+    report = run_import(second, nas, previous=first)
+
+    assert nas.item(PHOTO_PATH).data != sent
+    assert nas.item(PHOTO_PATH).description == "La plage"
+    assert nas.album_contents() == [("Été", [PHOTO_PATH])]
+    assert report.replaced == 1
+    assert report.not_read_again == [PHOTO_PATH]
+    assert f"- {PHOTO_PATH}" in report.render()
+    assert report.failed_uploads == []
+    # A run of a finished export replaces nothing: it only checks the text.
+    assert report.finished
+
+
 def test_an_export_with_a_refused_file_is_not_finished(tmp_path: Path) -> None:
     export = edited_export(tmp_path / "2024-01-01")
     nas = FakeSynologyPhotos()

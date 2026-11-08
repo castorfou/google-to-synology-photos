@@ -11,7 +11,12 @@ from datetime import UTC, datetime
 from typing import Any
 
 from google_to_synology_photos.dsm import DsmApi
-from google_to_synology_photos.synology import NasAlbum, SynologyError
+from google_to_synology_photos.synology import (
+    FileRefusedError,
+    NasAlbum,
+    NotReindexedError,
+    SynologyError,
+)
 
 
 PHOTOS_ROOT = "Photos"
@@ -46,18 +51,14 @@ class SynologyPhotosClient:
             listing = self._list_folder(folder)
         if name in listing:
             return listing[name]
-        result = self._api.upload(
-            "SYNO.Foto.Upload.Item",
-            "upload_to_folder",
-            1,
-            {
-                "target_folder_id": json.dumps(self._make_folder(folder)),
-                "name": json.dumps(name, ensure_ascii=False),
-                "duplicate": json.dumps("ignore"),
-                "mtime": str(int(mtime.timestamp())),
-            },
-            name,
-            data,
+        fields = {
+            "target_folder_id": json.dumps(self._make_folder(folder)),
+            "name": json.dumps(name, ensure_ascii=False),
+            "duplicate": json.dumps("ignore"),
+            "mtime": str(int(mtime.timestamp())),
+        }
+        result = self._send_file(
+            "SYNO.Foto.Upload.Item", "upload_to_folder", 1, fields, name, data
         )
         item_id = int(result["id"])
         if result.get("action") == "rename":
@@ -77,21 +78,23 @@ class SynologyPhotosClient:
         if item_id is None:
             return self.upload(path, data, mtime)
         folder, name = _split(path)
-        self._api.upload(
-            "SYNO.FileStation.Upload",
-            "upload",
-            2,
-            {
-                "path": f"/home/{PHOTOS_ROOT}{folder}",
-                "create_parents": "true",
-                "overwrite": "true",
-                # In milliseconds, unlike Upload.Item.
-                "mtime": str(int(mtime.timestamp() * 1000)),
-            },
-            name,
-            data,
-        )
-        self._wait_for_reindex(item_id, len(data))
+        fields = {
+            "path": f"/home/{PHOTOS_ROOT}{folder}",
+            "create_parents": "true",
+            "overwrite": "true",
+            # In milliseconds, unlike Upload.Item.
+            "mtime": str(int(mtime.timestamp() * 1000)),
+        }
+        self._send_file("SYNO.FileStation.Upload", "upload", 2, fields, name, data)
+        # The file is replaced already: a wait that fails does not undo that.
+        try:
+            self._wait_for_reindex(item_id, len(data))
+        except TimeoutError as error:
+            raise NotReindexedError(item_id, str(error)) from error
+        except SynologyError as error:
+            if error.session_lost:
+                raise
+            raise NotReindexedError(item_id, str(error)) from error
         return item_id
 
     def folder_items(self, folder: str) -> dict[str, int]:
@@ -177,6 +180,23 @@ class SynologyPhotosClient:
         return [int(i["id"]) for i in items]
 
     # Helpers
+
+    def _send_file(
+        self,
+        api: str,
+        method: str,
+        version: int,
+        fields: dict[str, str],
+        name: str,
+        data: bytes,
+    ) -> dict[str, Any]:
+        """Upload a file; an error other than a lost session refuses the file."""
+        try:
+            return self._api.upload(api, method, version, fields, name, data)
+        except SynologyError as error:
+            if error.session_lost:
+                raise
+            raise FileRefusedError(error.code, f"{api}.{method}") from error
 
     def _list_folder(self, folder: str) -> dict[str, int]:
         """List a folder as {file name: item id}, and keep that listing."""
