@@ -12,7 +12,8 @@
 - Writes on unknown items answer success and do nothing; writes on an unknown
   Album fail.
 - An upload or an overwrite to a path of ``refused_paths`` fails, as a file the
-  NAS refuses would.
+  NAS refuses would. No such refusal has been seen on the DS923: the contract
+  test does not check it.
 
 ``tests/test_contract.py`` checks these claims against the DS923.
 """
