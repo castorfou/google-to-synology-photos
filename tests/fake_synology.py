@@ -4,6 +4,8 @@
   existing file (``duplicate="ignore"``) and returns its id.
 - Overwrite keeps the item id and reads the Photo Description again from the
   new file; the fake's files carry none, so it becomes empty.
+- The fake's files carry no date: an item shows the ``mtime`` of its upload or
+  overwrite as its date.
 - Album names are not unique.
 - ``writes`` counts the write calls, and ``writes_left`` cuts the connection when it
   reaches 0, so that a test can stop a run at any write.
@@ -14,6 +16,7 @@
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from google_to_synology_photos.synology import NasAlbum, SynologyError
 
@@ -26,6 +29,7 @@ class FakeItem:
     id: int
     path: str
     data: bytes
+    time: datetime
     description: str = ""
 
 
@@ -59,18 +63,19 @@ class FakeSynologyPhotos:
 
     # SynologyPhotos interface
 
-    def upload(self, path: str, data: bytes) -> int:
+    def upload(self, path: str, data: bytes, mtime: datetime) -> int:
         self._write()
         existing = self.item_at(path)
         if existing is not None:
             return existing
-        item = FakeItem(self._new_id(), path, data)
+        item = FakeItem(self._new_id(), path, data, mtime)
         self._items[item.id] = item
         return item.id
 
-    def overwrite(self, path: str, data: bytes) -> int:
-        item_id = self.upload(path, data)
+    def overwrite(self, path: str, data: bytes, mtime: datetime) -> int:
+        item_id = self.upload(path, data, mtime)
         self._items[item_id].data = data
+        self._items[item_id].time = mtime
         self._items[item_id].description = ""
         if self.overwrite_keeps_id:
             return item_id
@@ -104,6 +109,10 @@ class FakeSynologyPhotos:
     def description(self, item_id: int) -> str | None:
         item = self._items.get(item_id)
         return item.description if item else None
+
+    def date(self, item_id: int) -> datetime | None:
+        item = self._items.get(item_id)
+        return item.time if item else None
 
     def create_album(self, name: str) -> int:
         self._write()

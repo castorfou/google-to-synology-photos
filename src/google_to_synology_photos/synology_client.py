@@ -7,6 +7,7 @@ File Station path ``/home/Photos/<folder>/<name>``.
 
 import json
 import time
+from datetime import UTC, datetime
 from typing import Any
 
 from google_to_synology_photos.dsm import DsmApi
@@ -34,7 +35,7 @@ class SynologyPhotosClient:
 
     # Items
 
-    def upload(self, path: str, data: bytes) -> int:
+    def upload(self, path: str, data: bytes, mtime: datetime) -> int:
         """Upload a file at path, keeping any file already there; return its id."""
         # duplicate="ignore" skips only identical files: a different file under
         # a taken name is stored as a renamed copy. So a taken path is checked
@@ -53,7 +54,7 @@ class SynologyPhotosClient:
                 "target_folder_id": json.dumps(self._make_folder(folder)),
                 "name": json.dumps(name, ensure_ascii=False),
                 "duplicate": json.dumps("ignore"),
-                "mtime": str(int(time.time())),
+                "mtime": str(int(mtime.timestamp())),
             },
             name,
             data,
@@ -69,12 +70,12 @@ class SynologyPhotosClient:
         self._listings.setdefault(folder, {})[name] = item_id
         return item_id
 
-    def overwrite(self, path: str, data: bytes) -> int:
+    def overwrite(self, path: str, data: bytes, mtime: datetime) -> int:
         """Replace the file at path, or upload it; return its id."""
         # Upload.Item has no overwrite; File Station has, and keeps the item id.
         item_id = self.item_at(path)
         if item_id is None:
-            return self.upload(path, data)
+            return self.upload(path, data, mtime)
         folder, name = _split(path)
         self._api.upload(
             "SYNO.FileStation.Upload",
@@ -84,6 +85,8 @@ class SynologyPhotosClient:
                 "path": f"/home/{PHOTOS_ROOT}{folder}",
                 "create_parents": "true",
                 "overwrite": "true",
+                # In milliseconds, unlike Upload.Item.
+                "mtime": str(int(mtime.timestamp() * 1000)),
             },
             name,
             data,
@@ -132,6 +135,12 @@ class SynologyPhotosClient:
         """Return the item's Photo Description, or None for an unknown item."""
         item = self._item(item_id, ["description"])
         return None if item is None else str(item["additional"]["description"])
+
+    def date(self, item_id: int) -> datetime | None:
+        """Return the date the item shows, or None for an unknown item."""
+        # The item time is a local time, sent as if it were UTC.
+        item = self._item(item_id, [])
+        return None if item is None else datetime.fromtimestamp(item["time"], UTC)
 
     # Albums
 

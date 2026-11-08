@@ -151,7 +151,7 @@ def _send(
     if not prepared.complete:
         report.metadata_not_written.append(path)
     send = nas.overwrite if path == overwriting else nas.upload
-    item_id = send(path, prepared.data)
+    item_id = send(path, prepared.data, photo.taken)
     if nas.item_at(path) != item_id:
         report.failed_writes.append(f"Upload of {path}")
         return None

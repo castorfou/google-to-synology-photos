@@ -127,6 +127,16 @@ def test_an_h264_video_is_sent_as_it_is(tmp_path: Path, name: str, muxer: str) -
     assert report.failed_conversions == []
 
 
+def test_an_h264_video_with_no_date_is_dated_by_its_upload(tmp_path: Path) -> None:
+    data = make_video(tmp_path, *H264, "-map_metadata", "-1", "-f", "mp4")
+
+    nas, _ = import_video(tmp_path, "VID.mp4", data)
+
+    item = nas.item(f"{FOLDER}/VID__yxk3qp.mp4")
+    assert item.data == data
+    assert item.time == TAKEN
+
+
 def test_a_converted_video_gets_its_photo_description_and_its_album(
     tmp_path: Path,
 ) -> None:
