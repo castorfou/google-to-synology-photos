@@ -16,6 +16,8 @@
   does not take.
 - An overwrite to a path of ``slow_reindex_paths`` replaces the file, then fails
   as Synology Photos taking too long to read it again would.
+- After ``end_session()``, or from the call named by ``session_ends_at``, every
+  call fails as on a lost session, until ``log_in()``.
 
 ``tests/test_contract.py`` checks these claims against the DS923.
 """
@@ -67,9 +69,14 @@ class FakeSynologyPhotos:
         self.refused_paths: set[str] = set()
         self.slow_reindex_paths: set[str] = set()
         self._session = True
+        # Name of the call at which the session expires, such as "upload".
+        self.session_ends_at: str | None = None
 
     def _call(self, method: str) -> None:
         """Fail as every call does once the session is gone."""
+        if method == self.session_ends_at:
+            self.session_ends_at = None
+            self._session = False
         if not self._session:
             raise SynologyError(SESSION_MISSING, method)
 
@@ -179,6 +186,10 @@ class FakeSynologyPhotos:
     def end_session(self) -> None:
         """End the session, as an expiry or a logout elsewhere would."""
         self._session = False
+
+    def log_in(self) -> None:
+        """Start a new session, as a new login would."""
+        self._session = True
 
     def delete_album(self, album_id: int) -> None:
         """Delete an Album: its photos stay."""

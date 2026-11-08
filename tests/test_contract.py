@@ -288,6 +288,16 @@ def test_album_holds_the_items_added_to_it(nas: Nas) -> None:
     ]
 
 
+def test_adding_an_item_an_album_holds_already_keeps_it_once(nas: Nas) -> None:
+    photo = nas.client.upload(nas.path("red.jpg"), nas.media.photo, MTIME)
+    album_id = nas.client.create_album("g2s contract twice")
+    nas.client.add_to_album(album_id, [photo])
+
+    nas.client.add_to_album(album_id, [photo])
+
+    assert nas.client.album_items(album_id) == [photo]
+
+
 def test_an_album_and_its_folder_give_the_same_item_ids(nas: Nas) -> None:
     photo = nas.client.upload(nas.path("lib/red.jpg"), nas.media.photo, MTIME)
     video = nas.client.upload(nas.path("lib/c.mp4"), nas.media.video, MTIME)
