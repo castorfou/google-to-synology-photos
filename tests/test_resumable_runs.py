@@ -3,6 +3,7 @@
 import json
 import ssl
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -183,7 +184,11 @@ def test_an_album_with_the_same_title_and_other_photos_is_left_alone(
     tmp_path: Path, export: Path
 ) -> None:
     nas = FakeSynologyPhotos()
-    other = nas.upload("Photos/Google Photos/2013/other.jpg", b"other")
+    other = nas.upload(
+        "Photos/Google Photos/2013/other.jpg",
+        b"other",
+        datetime(2013, 1, 1, tzinfo=UTC),
+    )
     held = nas.create_album("Été")
     nas.add_to_album(held, [other])
 
@@ -239,7 +244,7 @@ def test_g2s_says_to_run_again_whatever_way_the_run_stops(
 ) -> None:
     nas = FakeSynologyPhotos()
 
-    def cut(path: str, data: bytes) -> int:
+    def cut(path: str, data: bytes, mtime: datetime) -> int:
         raise error
 
     monkeypatch.setattr(nas, "upload", cut)

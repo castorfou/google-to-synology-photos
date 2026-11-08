@@ -337,7 +337,9 @@ def test_a_taken_over_photo_still_follows_its_changed_file(tmp_path: Path) -> No
     )
     nas = FakeSynologyPhotos()
     run_import(first, nas)
-    copy = nas.upload(theirs_path("IMG_0001.JPG"), THEIRS)
+    copy = nas.upload(
+        theirs_path("IMG_0001.JPG"), THEIRS, datetime(2013, 1, 1, tzinfo=UTC)
+    )
     album_id = nas.albums()[0].id
     nas.add_to_album(album_id, [copy])
 

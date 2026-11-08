@@ -115,6 +115,8 @@ kept as they are
 
 Only the EXIF group counts: a date or position in XMP stays as it is, and the EXIF one is still written. When a file lacks nothing, its bytes are sent untouched. No text is ever written into a file: Photo Descriptions go through the API. The year folder of the NAS path always comes from `photoTakenTime`, never from the file.
 
+Every upload and overwrite sends the date taken as the `mtime` of the file on the NAS. Synology Photos shows it as the date of a file that holds none: an H.264 video with no `creation_time`, or a GIF, gets its date this way and its bytes stay untouched.
+
 - **Formats.** JPEG and PNG, recognised by their content, because Takeout has JPEGs named `.png`. Videos follow the rules below. GIFs and any other file are sent untouched.
 - **ExifTool.** It rewrites the metadata and leaves the image data as it is. One `exiftool -stay_open` process serves the whole run, through PyExifTool. Without ExifTool, `g2s` stops before any upload and says how to install it.
 - **Failure.** A file ExifTool cannot read or write is sent untouched, and the report lists it under *Files sent without their missing date or position*.
@@ -124,7 +126,7 @@ Only the EXIF group counts: a date or position in XMP stays as it is, and the EX
 A file is a video when its extension says so: ffprobe would take a HEIC photo for an HEVC video. ffprobe then tells by content whether Synology Photos can play it, because Takeout has WMV files named `.avi`.
 
 - **Converted:** the AVI, ASF (WMV) and MPEG formats, and HEVC, MPEG-1 and MPEG-2 video in any format.
-- **Sent untouched:** every other video, H.264 MP4 and MOV among them.
+- **Sent untouched:** every other video, H.264 MP4 and MOV among them. One with no `creation_time` shows the date taken through the `mtime` of its upload.
 
 A conversion gives an MP4 with H.264 video (CRF 20, 8-bit 4:2:0, even dimensions) and AAC audio, in place of the original, which stays in the ZIPs. The date taken goes into `creation_time`, in UTC, and replaces any date in the original. No text is written.
 
@@ -286,6 +288,6 @@ Tests assert on what the Household would see in the fake (paths, Albums, Photo D
 
 ### Fake Synology Photos
 
-`tests/fake_synology.py` is an in-memory fake Synology Photos, true to the behaviour measured on the DS923 by default. Setting `descriptions_stick = False` or `album_names_stick = False` makes description writes or Album renames silently not stick, and `overwrite_keeps_id = False` gives an overwritten item a new id, out of its Albums. The DS923 keeps the id: that setting checks that the import does not rely on it. `writes` counts the write calls, and `writes_left` cuts the connection after that many.
+`tests/fake_synology.py` is an in-memory fake Synology Photos, true to the behaviour measured on the DS923 by default. Setting `descriptions_stick = False` or `album_names_stick = False` makes description writes or Album renames silently not stick, and `overwrite_keeps_id = False` gives an overwritten item a new id, out of its Albums. The DS923 keeps the id: that setting checks that the import does not rely on it. `writes` counts the write calls, and `writes_left` cuts the connection after that many. Its files hold no date, so an item shows the `mtime` it was sent with.
 
 `tests/test_contract.py` is the contract of the client, which keeps the fake true to the NAS. It runs against the fake always, and against the DS923 with `G2S_CONTRACT=1` (see [Contract test](synology-photos-api.md#contract-test)).

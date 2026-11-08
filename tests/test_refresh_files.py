@@ -180,7 +180,7 @@ def test_a_moved_photo_stays_in_a_hand_made_album(tmp_path: Path) -> None:
     first = before.write(tmp_path / "2024-01-01")
     nas = FakeSynologyPhotos()
     run_import(first, nas)
-    own = nas.upload(OWN_PATH, b"own photo")
+    own = nas.upload(OWN_PATH, b"own photo", datetime(2013, 1, 1, tzinfo=UTC))
     favourites = nas.create_album("Nos favoris")
     nas.add_to_album(favourites, [nas.item(PHOTO_PATH).id, own])
 

@@ -308,7 +308,7 @@ def test_a_hand_made_album_with_a_photo_outside_the_library_is_untouched(
     export = takeout.write(tmp_path / "2024-01-01")
     nas = FakeSynologyPhotos()
     run_import(export, nas)
-    own = nas.upload(OWN_PATH, b"own photo")
+    own = nas.upload(OWN_PATH, b"own photo", datetime(2013, 1, 1, tzinfo=UTC))
     favourites = nas.create_album("Nos favoris")
     nas.add_to_album(favourites, [nas.item(PHOTO_PATH).id, own])
     nas.delete_album(next(a.id for a in nas.albums() if a.name == "Été"))

@@ -11,6 +11,7 @@ import subprocess
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,9 @@ from tests.fake_synology import FakeSynologyPhotos
 
 ENV_FILE = Path(__file__).parents[1] / "data" / "raw" / "nas-api-test.env"
 UNKNOWN_ID = 999_999_999
+# At noon UTC, so that the local time the NAS shows falls on the same day.
+MTIME = datetime(2010, 1, 1, 12, tzinfo=UTC)
+LATER = datetime(2015, 1, 1, 12, tzinfo=UTC)
 TEXT = "Première baignade 🌊 — « été »\n\n💬 Alice : Trop beau !\n❤️ Alice, Bob"
 
 
@@ -29,6 +33,7 @@ class Media:
     photo: bytes
     other_photo: bytes
     video: bytes
+    gif: bytes
 
 
 @dataclass
@@ -42,7 +47,10 @@ class Nas:
 
 
 def _ffmpeg_media(tmp: Path) -> Media:
-    """Tiny real media files, so that Synology Photos indexes them."""
+    """Tiny real media files, so that Synology Photos indexes them.
+
+    The video and the GIF hold no date.
+    """
     if shutil.which("ffmpeg") is None:
         pytest.skip("ffmpeg is needed to make media for the NAS")
 
@@ -62,8 +70,9 @@ def _ffmpeg_media(tmp: Path) -> Media:
         video=make(
             "clip.mp4",
             *["-f", "lavfi", "-i", "testsrc=size=64x48:rate=10:duration=1"],
-            *["-pix_fmt", "yuv420p"],
+            *["-pix_fmt", "yuv420p", "-map_metadata", "-1"],
         ),
+        gif=make("anim.gif", "-f", "lavfi", "-i", "testsrc=size=32x24:duration=1"),
     )
 
 
@@ -106,7 +115,7 @@ def nas(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[Nas]:
         yield Nas(
             FakeSynologyPhotos(),
             "Photos/g2s-contract",
-            Media(b"photo bytes", b"other photo bytes", b"video bytes"),
+            Media(b"photo bytes", b"other photo bytes", b"video bytes", b"gif bytes"),
         )
     else:
         yield from _real_nas(tmp_path)
@@ -115,7 +124,7 @@ def nas(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[Nas]:
 def test_upload_returns_the_id_of_the_item_at_its_path(nas: Nas) -> None:
     path = nas.path("2013/red.jpg")
 
-    item_id = nas.client.upload(path, nas.media.photo)
+    item_id = nas.client.upload(path, nas.media.photo, MTIME)
 
     assert nas.client.item_at(path) == item_id
 
@@ -126,10 +135,10 @@ def test_item_at_an_empty_path_is_none(nas: Nas) -> None:
 
 def test_upload_to_a_taken_path_keeps_the_item(nas: Nas) -> None:
     path = nas.path("red.jpg")
-    first = nas.client.upload(path, nas.media.photo)
+    first = nas.client.upload(path, nas.media.photo, MTIME)
     nas.client.set_description(first, TEXT)
 
-    again = nas.client.upload(path, nas.media.other_photo)
+    again = nas.client.upload(path, nas.media.other_photo, MTIME)
 
     assert again == first
     assert nas.client.description(first) == TEXT
@@ -139,10 +148,10 @@ def test_overwrite_keeps_the_id_and_reads_the_description_from_the_new_file(
     nas: Nas,
 ) -> None:
     path = nas.path("red.jpg")
-    item_id = nas.client.upload(path, nas.media.photo)
+    item_id = nas.client.upload(path, nas.media.photo, MTIME)
     nas.client.set_description(item_id, TEXT)
 
-    replaced = nas.client.overwrite(path, nas.media.other_photo)
+    replaced = nas.client.overwrite(path, nas.media.other_photo, MTIME)
 
     assert replaced == item_id
     assert nas.client.description(item_id) == ""
@@ -151,14 +160,40 @@ def test_overwrite_keeps_the_id_and_reads_the_description_from_the_new_file(
 def test_overwrite_of_an_empty_path_uploads(nas: Nas) -> None:
     path = nas.path("new.jpg")
 
-    item_id = nas.client.overwrite(path, nas.media.photo)
+    item_id = nas.client.overwrite(path, nas.media.photo, MTIME)
 
     assert nas.client.item_at(path) == item_id
 
 
+@pytest.mark.parametrize("name", ["c.mp4", "anim.gif"])
+def test_a_file_with_no_date_shows_the_mtime_of_its_upload(nas: Nas, name: str) -> None:
+    data = nas.media.video if name == "c.mp4" else nas.media.gif
+
+    item_id = nas.client.upload(nas.path(name), data, MTIME)
+
+    shown = nas.client.date(item_id)
+    assert shown is not None
+    assert shown.date() == MTIME.date()
+
+
+def test_an_overwritten_file_with_no_date_shows_the_new_mtime(nas: Nas) -> None:
+    path = nas.path("c.mp4")
+    item_id = nas.client.upload(path, nas.media.video, MTIME)
+
+    nas.client.overwrite(path, nas.media.video + b"\0", LATER)
+
+    shown = nas.client.date(item_id)
+    assert shown is not None
+    assert shown.date() == LATER.date()
+
+
+def test_date_of_an_unknown_item_is_none(nas: Nas) -> None:
+    assert nas.client.date(UNKNOWN_ID) is None
+
+
 def test_folder_items_gives_the_items_of_a_folder_by_path(nas: Nas) -> None:
-    photo = nas.client.upload(nas.path("2013/red.jpg"), nas.media.photo)
-    nas.client.upload(nas.path("2014/blue.jpg"), nas.media.other_photo)
+    photo = nas.client.upload(nas.path("2013/red.jpg"), nas.media.photo, MTIME)
+    nas.client.upload(nas.path("2014/blue.jpg"), nas.media.other_photo, MTIME)
 
     found = nas.client.folder_items(nas.path("2013"))
 
@@ -166,10 +201,12 @@ def test_folder_items_gives_the_items_of_a_folder_by_path(nas: Nas) -> None:
 
 
 def test_folder_items_also_gives_the_items_of_its_subfolders(nas: Nas) -> None:
-    photo = nas.client.upload(nas.path("lib/2013/red.jpg"), nas.media.photo)
-    other = nas.client.upload(nas.path("lib/2014/a/blue.jpg"), nas.media.other_photo)
-    video = nas.client.upload(nas.path("lib/c.mp4"), nas.media.video)
-    nas.client.upload(nas.path("outside/d.jpg"), nas.media.photo)
+    photo = nas.client.upload(nas.path("lib/2013/red.jpg"), nas.media.photo, MTIME)
+    other = nas.client.upload(
+        nas.path("lib/2014/a/blue.jpg"), nas.media.other_photo, MTIME
+    )
+    video = nas.client.upload(nas.path("lib/c.mp4"), nas.media.video, MTIME)
+    nas.client.upload(nas.path("outside/d.jpg"), nas.media.photo, MTIME)
 
     found = nas.client.folder_items(nas.path("lib"))
 
@@ -189,7 +226,7 @@ def test_description_is_read_back_exactly(nas: Nas, kind: str) -> None:
     name, data = (
         ("red.jpg", nas.media.photo) if kind == "photo" else ("c.mp4", nas.media.video)
     )
-    item_id = nas.client.upload(nas.path(name), data)
+    item_id = nas.client.upload(nas.path(name), data, MTIME)
 
     nas.client.set_description(item_id, TEXT)
 
@@ -199,7 +236,7 @@ def test_description_is_read_back_exactly(nas: Nas, kind: str) -> None:
 def test_a_long_description_is_read_back_exactly(nas: Nas) -> None:
     # Longer than the longest Photo Description of the real export.
     text = "\n".join([TEXT] * 100)
-    item_id = nas.client.upload(nas.path("long.jpg"), nas.media.photo)
+    item_id = nas.client.upload(nas.path("long.jpg"), nas.media.photo, MTIME)
 
     nas.client.set_description(item_id, text)
 
@@ -207,7 +244,7 @@ def test_a_long_description_is_read_back_exactly(nas: Nas) -> None:
 
 
 def test_an_empty_description_clears_the_item(nas: Nas) -> None:
-    item_id = nas.client.upload(nas.path("cleared.jpg"), nas.media.photo)
+    item_id = nas.client.upload(nas.path("cleared.jpg"), nas.media.photo, MTIME)
     nas.client.set_description(item_id, TEXT)
 
     nas.client.set_description(item_id, "")
@@ -223,8 +260,8 @@ def test_writes_on_unknown_items_answer_success_and_do_nothing(nas: Nas) -> None
 
 
 def test_album_holds_the_items_added_to_it(nas: Nas) -> None:
-    photo = nas.client.upload(nas.path("red.jpg"), nas.media.photo)
-    video = nas.client.upload(nas.path("c.mp4"), nas.media.video)
+    photo = nas.client.upload(nas.path("red.jpg"), nas.media.photo, MTIME)
+    video = nas.client.upload(nas.path("c.mp4"), nas.media.video, MTIME)
     album_id = nas.client.create_album("g2s contract Été")
 
     nas.client.add_to_album(album_id, [photo, video, UNKNOWN_ID])
@@ -236,8 +273,8 @@ def test_album_holds_the_items_added_to_it(nas: Nas) -> None:
 
 
 def test_an_album_and_its_folder_give_the_same_item_ids(nas: Nas) -> None:
-    photo = nas.client.upload(nas.path("lib/red.jpg"), nas.media.photo)
-    video = nas.client.upload(nas.path("lib/c.mp4"), nas.media.video)
+    photo = nas.client.upload(nas.path("lib/red.jpg"), nas.media.photo, MTIME)
+    video = nas.client.upload(nas.path("lib/c.mp4"), nas.media.video, MTIME)
     album_id = nas.client.create_album("g2s contract ids")
 
     nas.client.add_to_album(album_id, [photo, video])
@@ -276,7 +313,7 @@ def test_album_names_are_kept_exactly(nas: Nas) -> None:
 
 
 def test_writes_on_an_unknown_album_fail(nas: Nas) -> None:
-    item = nas.client.upload(nas.path("red.jpg"), nas.media.photo)
+    item = nas.client.upload(nas.path("red.jpg"), nas.media.photo, MTIME)
 
     with pytest.raises(SynologyError):
         nas.client.add_to_album(UNKNOWN_ID, [item])
@@ -286,7 +323,7 @@ def test_writes_on_an_unknown_album_fail(nas: Nas) -> None:
 
 def test_deleted_item_leaves_its_path(nas: Nas) -> None:
     path = nas.path("red.jpg")
-    item_id = nas.client.upload(path, nas.media.photo)
+    item_id = nas.client.upload(path, nas.media.photo, MTIME)
 
     nas.client.delete_item(item_id)
 

@@ -7,6 +7,7 @@ Album names are not unique: Albums are only ever found by id.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 
 
@@ -27,15 +28,19 @@ class NasAlbum:
 
 
 class SynologyPhotos(Protocol):
-    def upload(self, path: str, data: bytes) -> int:
-        """Upload a file at path, keeping any file already there; return its id."""
+    def upload(self, path: str, data: bytes, mtime: datetime) -> int:
+        """Upload a file at path, keeping any file already there; return its id.
+
+        mtime is the modification time of the file on the NAS: an item whose
+        file holds no date shows it as its date.
+        """
         ...
 
-    def overwrite(self, path: str, data: bytes) -> int:
+    def overwrite(self, path: str, data: bytes, mtime: datetime) -> int:
         """Replace the file at path, or upload it; return its id.
 
         The item keeps its id. Its Photo Description is read again from the new
-        file.
+        file, and its date from the new file or mtime.
         """
         ...
 
@@ -60,6 +65,10 @@ class SynologyPhotos(Protocol):
 
     def description(self, item_id: int) -> str | None:
         """Return the item's Photo Description, or None for an unknown item."""
+        ...
+
+    def date(self, item_id: int) -> datetime | None:
+        """Return the date the item shows, or None for an unknown item."""
         ...
 
     def create_album(self, name: str) -> int:
