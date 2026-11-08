@@ -46,6 +46,8 @@ Parameters are sent as a form POST. Values of the `SYNO.Foto.*` calls are JSON-e
 - **Album names** are not unique: creating an Album with a taken name gives a second Album. Names are stored exactly as sent, spaces and `/` included.
 - **Item ids.** An item has the same id in its folder and in its Albums.
 - **Device token.** The login returns a device token (`did`), even without 2FA. Given back as `device_id`, it spares the 2FA code. A login without the password fails (error 400) even with a device token.
+- **Lost session.** Once the session has expired, every call fails with error 106: a session left idle for 21 minutes is gone, one idle for 11 minutes still works. A call with no session, a wrong `X-SYNO-TOKEN` or after a logout fails with error 119, for `SYNO.Foto.*` and File Station alike. Synology documents 107 for a session cut by another login; it has not been seen. The client treats 106, 107 and 119 as a lost session.
+- **Refused uploads.** `Upload.Item upload_to_folder` refuses a file Synology Photos does not take, such as `.txt`, `.exe` or a name with no extension, with error 620. It takes a damaged or empty file with a photo extension, as a `photo` item. An unknown `target_folder_id` gives 621, a `name` holding `/` gives 108. File Station `upload` takes any file; a `path` outside the user's shares gives 408.
 - **Login errors.** 400: wrong user name or password. 403: a 2FA code is needed (`otp_code`). 404: wrong 2FA code.
 - **Certificate.** DSM serves a self-signed certificate on its LAN address. The client pins it (see [Architecture](architecture.md#login)). When DSM renews it, the pinned certificate no longer matches: `g2s` stops and asks to run `g2s login`, which shows the new fingerprint.
 

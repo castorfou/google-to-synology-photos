@@ -12,6 +12,9 @@ from typing import Protocol
 
 
 # DSM answers these when the session is gone: every later call would fail too.
+# The DS923 answers 106 once the session has expired, and 119 to a call with no
+# session, a wrong token or after a logout. 107, a session cut by another login,
+# is Synology's documented code; it has not been seen.
 SESSION_TIMEOUT = 106
 SESSION_INTERRUPTED = 107
 SESSION_MISSING = 119
@@ -31,6 +34,25 @@ class SynologyError(Exception):
         return self.code in SESSION_LOST
 
 
+class FileRefusedError(SynologyError):
+    """The NAS refused the file itself: the upload or overwrite call failed.
+
+    It never stands for a lost session.
+    """
+
+
+class NotReindexedError(Exception):
+    """An overwrite replaced the file, but Synology Photos did not read it again.
+
+    The item keeps its id. Its Photo Description may still change to the one of
+    the new file.
+    """
+
+    def __init__(self, item_id: int, reason: str) -> None:
+        super().__init__(f"item {item_id} was not read again: {reason}")
+        self.item_id = item_id
+
+
 @dataclass(frozen=True)
 class NasAlbum:
     """An Album of Synology Photos."""
@@ -44,7 +66,8 @@ class SynologyPhotos(Protocol):
         """Upload a file at path, keeping any file already there; return its id.
 
         mtime is the modification time of the file on the NAS: an item whose
-        file holds no date shows it as its date.
+        file holds no date shows it as its date. Raise FileRefusedError when the
+        NAS refuses the file; any other error means the NAS cannot be used.
         """
         ...
 
@@ -52,7 +75,9 @@ class SynologyPhotos(Protocol):
         """Replace the file at path, or upload it; return its id.
 
         The item keeps its id. Its Photo Description is read again from the new
-        file, and its date from the new file or mtime.
+        file, and its date from the new file or mtime. Raise FileRefusedError as
+        upload does, and NotReindexedError when the file was replaced but
+        Synology Photos did not read it again.
         """
         ...
 

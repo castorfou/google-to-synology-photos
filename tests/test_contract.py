@@ -9,15 +9,19 @@ import os
 import shutil
 import subprocess
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
-from google_to_synology_photos.synology import SynologyError, SynologyPhotos
-from tests.fake_synology import FakeSynologyPhotos
+from google_to_synology_photos.synology import (
+    FileRefusedError,
+    SynologyError,
+    SynologyPhotos,
+)
+from tests.fake_synology import UNSUPPORTED_FILE, FakeSynologyPhotos
 
 
 ENV_FILE = Path(__file__).parents[1] / "data" / "raw" / "nas-api-test.env"
@@ -41,6 +45,8 @@ class Nas:
     client: SynologyPhotos
     root: str
     media: Media
+    # Ends the session, as an expiry or a logout elsewhere would.
+    end_session: Callable[[], None]
 
     def path(self, name: str) -> str:
         return f"{self.root}/{name}"
@@ -94,9 +100,17 @@ def _real_nas(tmp: Path) -> Iterator[Nas]:
     client = SynologyPhotosClient(api)
     folder = f"g2s-contract-{uuid.uuid4().hex[:8]}"
     albums_before = {a.id for a in client.albums()}
+    ended: list[bool] = []
+
+    def end_session() -> None:
+        api.logout()
+        ended.append(True)
+
     try:
-        yield Nas(client, f"Photos/{folder}", _ffmpeg_media(tmp))
+        yield Nas(client, f"Photos/{folder}", _ffmpeg_media(tmp), end_session)
     finally:
+        if ended:
+            api.login(env["NAS_USER"], env["NAS_PASSWORD"])
         created = [a.id for a in client.albums() if a.id not in albums_before]
         if created:
             api.call("SYNO.Foto.Browse.Album", "delete", 1, id=created)
@@ -112,10 +126,12 @@ def _real_nas(tmp: Path) -> Iterator[Nas]:
 @pytest.fixture(params=["fake", "real"])
 def nas(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[Nas]:
     if request.param == "fake":
+        fake = FakeSynologyPhotos()
         yield Nas(
-            FakeSynologyPhotos(),
+            fake,
             "Photos/g2s-contract",
             Media(b"photo bytes", b"other photo bytes", b"video bytes", b"gif bytes"),
+            fake.end_session,
         )
     else:
         yield from _real_nas(tmp_path)
@@ -329,3 +345,37 @@ def test_deleted_item_leaves_its_path(nas: Nas) -> None:
 
     assert nas.client.item_at(path) is None
     assert nas.client.description(item_id) is None
+
+
+@pytest.mark.parametrize("name", ["note.txt", "readme"])
+def test_upload_of_a_file_synology_photos_does_not_take_is_refused(
+    nas: Nas, name: str
+) -> None:
+    path = nas.path(name)
+
+    with pytest.raises(FileRefusedError) as refused:
+        nas.client.upload(path, b"not a photo", MTIME)
+
+    assert refused.value.code == UNSUPPORTED_FILE
+    assert nas.client.item_at(path) is None
+
+
+def test_every_call_after_the_session_ends_tells_the_session_is_lost(
+    nas: Nas,
+) -> None:
+    path = nas.path("red.jpg")
+    nas.client.upload(path, nas.media.photo, MTIME)
+
+    nas.end_session()
+
+    calls = [
+        lambda: nas.client.albums(),
+        lambda: nas.client.item_at(path),
+        lambda: nas.client.upload(nas.path("blue.jpg"), nas.media.other_photo, MTIME),
+        lambda: nas.client.overwrite(path, nas.media.other_photo, LATER),
+    ]
+    for call in calls:
+        with pytest.raises(SynologyError) as lost:
+            call()
+        assert lost.value.session_lost
+        assert not isinstance(lost.value, FileRefusedError)
