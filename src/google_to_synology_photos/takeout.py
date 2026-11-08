@@ -273,13 +273,7 @@ def previous_export(export_dir: Path) -> Path | None:
     return max(finished or older, key=lambda folder: folder.name, default=None)
 
 
-def _no_progress(number: int, total: int) -> None:
-    """Show nothing."""
-
-
-def read_export(
-    export_dir: Path, progress: Callable[[int, int], None] = _no_progress
-) -> Export:
+def read_export(export_dir: Path, progress: Callable[[int, int], None]) -> Export:
     """Read every ZIP of export_dir into the Albums and their photos (by url).
 
     progress is told the number of each ZIP it starts, and how many there are.

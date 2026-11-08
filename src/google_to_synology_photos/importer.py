@@ -9,6 +9,7 @@ running again after a stop, from any computer, continues without a state file.
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 
 from google_to_synology_photos.album_download import (
@@ -298,14 +299,11 @@ def run_import(
     to their Albums.
     """
     report = Report()
-    export = read_export(export_dir, lambda n, t: progress("Reading the export", n, t))
-    earlier_photos = (
-        {}
-        if previous is None
-        else read_export(
-            previous, lambda n, t: progress("Reading the previous export", n, t)
-        ).photos
-    )
+    export = read_export(export_dir, partial(progress, "Reading the export"))
+    earlier_photos = {}
+    if previous is not None:
+        reading = partial(progress, "Reading the previous export")
+        earlier_photos = read_export(previous, reading).photos
     downloads = [] if album_downloads is None else read_album_downloads(album_downloads)
     report.no_file = [
         f"{album.title}: {name}" for album in export.albums for name in album.no_file
