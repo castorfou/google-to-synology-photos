@@ -11,12 +11,24 @@ from datetime import datetime
 from typing import Protocol
 
 
+# DSM answers these when the session is gone: every later call would fail too.
+SESSION_TIMEOUT = 106
+SESSION_INTERRUPTED = 107
+SESSION_MISSING = 119
+SESSION_LOST = (SESSION_TIMEOUT, SESSION_INTERRUPTED, SESSION_MISSING)
+
+
 class SynologyError(Exception):
     """A Synology Web API call failed."""
 
     def __init__(self, code: int, call: str) -> None:
         super().__init__(f"{call} failed with Synology error {code}")
         self.code = code
+
+    @property
+    def session_lost(self) -> bool:
+        """Tell whether the call failed because the session is gone."""
+        return self.code in SESSION_LOST
 
 
 @dataclass(frozen=True)

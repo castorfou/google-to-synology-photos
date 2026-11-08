@@ -28,6 +28,7 @@ class Report:
     comments_written: int = 0
     likes_written: int = 0
     failed_writes: list[str] = field(default_factory=list)
+    failed_uploads: list[str] = field(default_factory=list)
     metadata_not_written: list[str] = field(default_factory=list)
     failed_conversions: list[str] = field(default_factory=list)
     no_file: list[str] = field(default_factory=list)
@@ -41,7 +42,9 @@ class Report:
     @property
     def finished(self) -> bool:
         """Tell whether the run left nothing to try again."""
-        return not (self.failed_writes or self.failed_conversions)
+        return not (
+            self.failed_writes or self.failed_uploads or self.failed_conversions
+        )
 
     def render(self) -> str:
         """Return the report as Markdown."""
@@ -65,6 +68,8 @@ class Report:
             "",
         ]
         lines += [f"- {w}" for w in self.failed_writes] or ["None."]
+        lines += ["", "## Files the NAS refused, not uploaded", ""]
+        lines += [f"- {p}" for p in self.failed_uploads] or ["None."]
         lines += ["", "## Files sent without their missing date or position", ""]
         lines += [f"- {p}" for p in self.metadata_not_written] or ["None."]
         lines += ["", "## Videos that failed to convert, not uploaded", ""]
