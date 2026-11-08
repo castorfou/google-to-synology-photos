@@ -22,7 +22,11 @@ from google_to_synology_photos.login import (
     login,
 )
 from google_to_synology_photos.media import ExifToolMissingError, FfmpegMissingError
-from google_to_synology_photos.synology import SynologyError, SynologyPhotos
+from google_to_synology_photos.synology import (
+    LoggingInAgain,
+    SynologyError,
+    SynologyPhotos,
+)
 from google_to_synology_photos.synology_client import SynologyPhotosClient
 from google_to_synology_photos.takeout import (
     SelectedAlbumsExportError,
@@ -65,6 +69,20 @@ def _network_problem(error: OSError) -> str:
             "renewed in DSM, run `g2s login` to check and trust the new one."
         )
     return f"cannot reach the NAS ({reason})."
+
+
+def _log_in_again(connect: Callable[[bool], SynologyPhotos]) -> SynologyPhotos:
+    """Log in again during a run, without asking for anything kept."""
+    try:
+        return connect(False)
+    except SystemExit as error:
+        # connect stops g2s with a message of its own: tell the run stopped.
+        print(file=sys.stderr)  # Ends the progress line.
+        reason = str(error.code).removeprefix("g2s: ")
+        raise SystemExit(
+            "g2s: the session with the NAS was lost, and logging in again failed: "
+            f"{reason} Run g2s again: it continues where it stopped."
+        ) from error
 
 
 def _show_progress(step: str, number: int, total: int) -> None:
@@ -116,7 +134,7 @@ def main(
     try:
         report = run_import(
             export,
-            connect(False),
+            LoggingInAgain(connect(False), lambda: _log_in_again(connect)),
             _show_progress,
             previous,
             export.resolve().parent / ALBUM_DOWNLOADS_FOLDER,

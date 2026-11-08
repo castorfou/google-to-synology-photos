@@ -22,6 +22,7 @@ A stop during a Refresh may replace the same changed files again at the next run
 | `cannot reach the NAS` | Check that the NAS is on, that the address is right, and that you are on its network or VPN. |
 | `the OS keyring cannot be used` | `g2s` keeps the password in the keyring of your computer. On Linux, you need a running keyring, such as GNOME Keyring or KWallet, so run `g2s` in a desktop session. |
 | `the run stopped (...)` | Run the same command again. |
+| `the session with the NAS was lost, and logging in again failed` | `g2s` logs in again by itself when the NAS ends its session, which happens during a long run. Here that login failed. The end of the message says why: find it in this table, such as `Wrong user name or password.` or `cannot reach the NAS`, do what it says, then run the command again. |
 | A long error that ends with `BadZipFile` | A ZIP is damaged, often by a download that did not finish. Download that ZIP again from Google, and replace it on the NAS. |
 
 ## Questions

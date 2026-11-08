@@ -6,6 +6,7 @@ write back. Writes on an unknown Album fail.
 Album names are not unique: Albums are only ever found by id.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
@@ -127,3 +128,81 @@ class SynologyPhotos(Protocol):
     def album_items(self, album_id: int) -> list[int]:
         """Return the ids of the items in an Album."""
         ...
+
+
+class LoggingInAgain:
+    """SynologyPhotos that logs in again when the session is lost.
+
+    A call that fails on a lost session is made once more, on the session that
+    log_in_again opens. A second lost session, or a login that fails, stops the
+    call. Every call may be made twice: the NAS keeps nothing of a call that
+    failed on a lost session, and the client checks a path before it uploads.
+    """
+
+    def __init__(
+        self, nas: SynologyPhotos, log_in_again: Callable[[], SynologyPhotos]
+    ) -> None:
+        self._nas = nas
+        self._log_in_again = log_in_again
+
+    def _call[T](self, call: Callable[[SynologyPhotos], T]) -> T:
+        """Make call; on a lost session, log in again and make it once more."""
+        try:
+            return call(self._nas)
+        except SynologyError as error:
+            if not error.session_lost:
+                raise
+        self._nas = self._log_in_again()
+        return call(self._nas)
+
+    def upload(self, path: str, data: bytes, mtime: datetime) -> int:
+        """Upload a file at path, keeping any file already there; return its id."""
+        return self._call(lambda nas: nas.upload(path, data, mtime))
+
+    def overwrite(self, path: str, data: bytes, mtime: datetime) -> int:
+        """Replace the file at path, or upload it; return its id."""
+        return self._call(lambda nas: nas.overwrite(path, data, mtime))
+
+    def folder_items(self, folder: str) -> dict[str, int]:
+        """Return the id of each item of a NAS folder and its subfolders, by path."""
+        return self._call(lambda nas: nas.folder_items(folder))
+
+    def item_at(self, path: str) -> int | None:
+        """Return the id of the item at path, or None."""
+        return self._call(lambda nas: nas.item_at(path))
+
+    def delete_item(self, item_id: int) -> None:
+        """Delete an item and its file."""
+        self._call(lambda nas: nas.delete_item(item_id))
+
+    def set_description(self, item_id: int, text: str) -> None:
+        """Set the item's Photo Description."""
+        self._call(lambda nas: nas.set_description(item_id, text))
+
+    def description(self, item_id: int) -> str | None:
+        """Return the item's Photo Description, or None for an unknown item."""
+        return self._call(lambda nas: nas.description(item_id))
+
+    def date(self, item_id: int) -> datetime | None:
+        """Return the date the item shows, or None for an unknown item."""
+        return self._call(lambda nas: nas.date(item_id))
+
+    def create_album(self, name: str) -> int:
+        """Create an empty Album named name; return its id."""
+        return self._call(lambda nas: nas.create_album(name))
+
+    def rename_album(self, album_id: int, name: str) -> None:
+        """Rename an Album."""
+        self._call(lambda nas: nas.rename_album(album_id, name))
+
+    def add_to_album(self, album_id: int, item_ids: list[int]) -> None:
+        """Add items to an Album; unknown items are skipped."""
+        self._call(lambda nas: nas.add_to_album(album_id, item_ids))
+
+    def albums(self) -> list[NasAlbum]:
+        """Return every normal Album: only those can receive items."""
+        return self._call(lambda nas: nas.albums())
+
+    def album_items(self, album_id: int) -> list[int]:
+        """Return the ids of the items in an Album."""
+        return self._call(lambda nas: nas.album_items(album_id))
