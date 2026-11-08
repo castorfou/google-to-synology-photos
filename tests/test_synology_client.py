@@ -11,20 +11,19 @@ import pytest
 
 from google_to_synology_photos.dsm import DsmApi
 from google_to_synology_photos.synology import (
+    SESSION_MISSING,
     FileRefusedError,
     NotReindexedError,
     SynologyError,
 )
 from google_to_synology_photos.synology_client import SynologyPhotosClient
+from tests.fake_synology import UNSUPPORTED_FILE
 
 
 PATH = "Photos/Google Photos/2013/IMG_0001.JPG"
 DATA = b"photo bytes"
 MTIME = datetime(2013, 7, 14, 12, tzinfo=UTC)
 ITEM_ID = 42
-# DSM error codes as measured on the DS923.
-UNSUPPORTED_FILE = 620
-SESSION_GONE = 119
 PERMISSION_DENIED = 105
 
 
@@ -87,7 +86,7 @@ def test_a_send_the_nas_answers_with_an_error_is_a_refused_file(
     [
         ("SYNO.Foto.Browse.Item.list", PERMISSION_DENIED),
         ("SYNO.Foto.Browse.Folder.get", PERMISSION_DENIED),
-        ("SYNO.Foto.Upload.Item.upload_to_folder", SESSION_GONE),
+        ("SYNO.Foto.Upload.Item.upload_to_folder", SESSION_MISSING),
     ],
 )
 def test_a_read_or_a_lost_session_during_a_send_is_no_refused_file(
@@ -125,7 +124,7 @@ def test_an_overwrite_whose_reindex_wait_fails_keeps_its_item() -> None:
 
 def test_a_session_lost_while_waiting_for_the_reindex_stops() -> None:
     dsm = StubDsm(on_nas=True)
-    dsm.failing["SYNO.Foto.Index.get"] = SESSION_GONE
+    dsm.failing["SYNO.Foto.Index.get"] = SESSION_MISSING
 
     with pytest.raises(SynologyError) as stopped:
         client(dsm).overwrite(PATH, DATA, MTIME)

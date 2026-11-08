@@ -89,10 +89,8 @@ class SynologyPhotosClient:
         # The file is replaced already: a wait that fails does not undo that.
         try:
             self._wait_for_reindex(item_id, len(data))
-        except TimeoutError as error:
-            raise NotReindexedError(item_id, str(error)) from error
-        except SynologyError as error:
-            if error.session_lost:
+        except (TimeoutError, SynologyError) as error:
+            if isinstance(error, SynologyError) and error.session_lost:
                 raise
             raise NotReindexedError(item_id, str(error)) from error
         return item_id

@@ -25,6 +25,7 @@ from datetime import datetime
 from pathlib import PurePosixPath
 
 from google_to_synology_photos.synology import (
+    SESSION_MISSING,
     FileRefusedError,
     NasAlbum,
     NotReindexedError,
@@ -37,8 +38,6 @@ UNKNOWN_ALBUM = 609
 UNSUPPORTED_FILE = 620
 # Extensions the DS923 refuses so; a damaged photo with a photo extension passes.
 NOT_MEDIA = ("", ".txt", ".exe")
-# What the DS923 answers to any call once the session is gone.
-SESSION_MISSING = 119
 
 
 @dataclass
@@ -69,14 +68,14 @@ class FakeSynologyPhotos:
         self.slow_reindex_paths: set[str] = set()
         self._session = True
 
-    def _call(self, call: str) -> None:
+    def _call(self, method: str) -> None:
         """Fail as every call does once the session is gone."""
         if not self._session:
-            raise SynologyError(SESSION_MISSING, call)
+            raise SynologyError(SESSION_MISSING, method)
 
-    def _write(self, call: str) -> None:
+    def _write(self, method: str) -> None:
         """Count a write call, or cut the connection."""
-        self._call(call)
+        self._call(method)
         if self.writes_left == 0:
             raise ConnectionError("connection lost")
         if self.writes_left is not None:
