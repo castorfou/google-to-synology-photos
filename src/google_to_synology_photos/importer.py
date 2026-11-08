@@ -170,7 +170,7 @@ def _send(
     if nas.item_at(path) != item_id:
         report.failed_writes.append(f"Upload of {path}")
         return None
-    if prepared.extension is not None:
+    if prepared.converted:
         report.videos_converted += 1
     return path, item_id
 

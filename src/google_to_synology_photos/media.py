@@ -28,6 +28,14 @@ from google_to_synology_photos.takeout import Photo, Position
 EXIF_DATE = "%Y:%m:%d %H:%M:%S"
 # By content: Takeout has JPEGs named .png.
 SUFFIX_OF_SIGNATURE = {b"\xff\xd8\xff": ".jpg", b"\x89PNG\r\n\x1a\n": ".png"}
+# The extension of an ISO container by its major brand. Others (AVIF, CR3, M4A)
+# stay unknown: mif1 is also AVIF's.
+SUFFIX_OF_BRAND = {
+    b"qt  ": ".mov",
+    **dict.fromkeys((b"heic", b"heix", b"heim", b"heis"), ".heic"),
+    **dict.fromkeys((b"isom", b"iso2", b"mp41", b"mp42", b"avc1"), ".mp4"),
+}
+GIF_SIGNATURES = (b"GIF87a", b"GIF89a")
 # Only the EXIF group counts: it is what gets written, and an XMP value, which
 # may be empty, stays as it is next to it.
 DATE_TAG = "EXIF:DateTimeOriginal"
@@ -90,12 +98,15 @@ class ConversionFailedError(Exception):
 class PreparedFile:
     """The bytes to send; complete is False if what they lack could not be written.
 
-    extension replaces the one of the photo's name, for a converted video.
+    extension replaces the one of the photo's name: a converted video is an MP4,
+    and a name with no extension, which the NAS refuses, takes its content's.
+    converted tells a video converted by ffmpeg.
     """
 
     data: bytes
     complete: bool = True
     extension: str | None = None
+    converted: bool = False
 
 
 class MediaPreparer:
@@ -130,25 +141,27 @@ class MediaPreparer:
         Raises ConversionFailedError on a video that cannot be read or converted.
         """
         data = photo.read()
-        suffix = next(
-            (s for sign, s in SUFFIX_OF_SIGNATURE.items() if data.startswith(sign)),
-            None,
-        )
+        found = _suffix_of_content(data)
+        suffix = found if found in SUFFIX_OF_SIGNATURE.values() else None
+        name_suffix = Path(photo.name).suffix
+        extension = None if name_suffix or not found else found.removeprefix(".")
         if suffix is None:
-            if Path(photo.name).suffix.lower() in VIDEO_SUFFIXES:
-                return self._prepare_video(photo, data)
-            return PreparedFile(data)
+            if (name_suffix or found or "").lower() in VIDEO_SUFFIXES:
+                prepared = self._prepare_video(photo, data)
+                if prepared.converted:
+                    return prepared
+            return PreparedFile(data, extension=extension)
         file = Path(self._folder.name, f"media{suffix}")
         file.write_bytes(data)
         try:
             writes = self._missing_writes(photo, str(file))
             if not writes:
-                return PreparedFile(data)
+                return PreparedFile(data, extension=extension)
             # -m: a minor error, as in many old files, does not stop the write.
             self._exiftool.execute("-m", "-overwrite_original", *writes, str(file))
         except ExifToolExecuteException:
-            return PreparedFile(data, complete=False)
-        return PreparedFile(file.read_bytes())
+            return PreparedFile(data, complete=False, extension=extension)
+        return PreparedFile(file.read_bytes(), extension=extension)
 
     def date_in_file(self, name: str, data: bytes) -> datetime | None:
         """Return the date a file holds, read as UTC, or None."""
@@ -180,7 +193,7 @@ class MediaPreparer:
                 _convert(source, converted, photo.taken)
             except subprocess.CalledProcessError as error:
                 raise ConversionFailedError(photo.name) from error
-            return PreparedFile(converted.read_bytes(), extension="mp4")
+            return PreparedFile(converted.read_bytes(), extension="mp4", converted=True)
 
     def _missing_writes(self, photo: Photo, file: str) -> list[str]:
         """Return the ExifTool arguments that write what file lacks."""
@@ -192,6 +205,18 @@ class MediaPreparer:
         if POSITION_TAG not in held and photo.position is not None:
             writes += _position_writes(photo.position)
         return writes
+
+
+def _suffix_of_content(data: bytes) -> str | None:
+    """Return the suffix a file has by its content, or None if unknown."""
+    for sign, suffix in SUFFIX_OF_SIGNATURE.items():
+        if data.startswith(sign):
+            return suffix
+    if data.startswith(GIF_SIGNATURES):
+        return ".gif"
+    if data[4:8] == b"ftyp":
+        return SUFFIX_OF_BRAND.get(data[8:12])
+    return None
 
 
 def _is_unplayable(video: Path) -> bool:

@@ -10,7 +10,7 @@ from google_to_synology_photos.importer import run_import
 from google_to_synology_photos.synology import SynologyError
 from google_to_synology_photos.takeout import SelectedAlbumsExportError
 from tests.fake_synology import FakeSynologyPhotos
-from tests.takeout_builder import ROOT, TakeoutBuilder
+from tests.takeout_builder import ROOT, TakeoutBuilder, jpeg_bytes
 from tests.test_video_conversion import AVI, make_video
 
 
@@ -365,28 +365,81 @@ def test_a_sidecar_with_no_extension_takes_no_file_when_two_could_be_its_own(
     assert "- Noël: IMG_0001\n" in report.render()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="The DS923 refuses a file whose name has no extension (error 620), "
-    "even a real JPEG: the NAS path of a title with no extension needs the "
-    "extension of its file.",
-)
 def test_a_file_with_the_exact_name_of_a_sidecar_stays_its_file(
     tmp_path: Path,
 ) -> None:
+    # The DS923 refuses a name with no extension: the path takes the content's.
     takeout = TakeoutBuilder()
     album = takeout.album("Noël")
     photo = takeout.photo(album, "IMG_0001", URL, file_extension=".jpg")
     export = takeout.write(tmp_path / "export")
+    exact = jpeg_bytes("exact")
     with zipfile.ZipFile(next(export.glob("*.zip")), "a") as zf:
-        zf.writestr(f"{ROOT}/Noël/IMG_0001", b"exact")
-        zf.writestr(f"{ROOT}/Photos de\xa02013/IMG_0001", b"exact")
+        zf.writestr(f"{ROOT}/Noël/IMG_0001", exact)
+        zf.writestr(f"{ROOT}/Photos de\xa02013/IMG_0001", exact)
     nas = FakeSynologyPhotos()
 
+    report = run_import(export, nas)
+
+    assert nas.paths() == ["Photos/Google Photos/2013/IMG_0001__yxk3qp.jpg"]
+    sent = nas.item("Photos/Google Photos/2013/IMG_0001__yxk3qp.jpg").data
+    assert sent != photo.data
+    assert b"exact" in sent
+    assert report.videos_converted == 0
+
+
+@pytest.mark.parametrize(
+    "data, extension",
+    [
+        (b"\x00\x00\x00\x18ftypheic\x00\x00\x00\x00mif1heic", "heic"),
+        (b"GIF89a\x01\x00\x01\x00", "gif"),
+    ],
+)
+def test_a_photo_whose_file_has_no_extension_takes_its_content_extension(
+    tmp_path: Path, data: bytes, extension: str
+) -> None:
+    takeout = TakeoutBuilder()
+    takeout.photo(takeout.album("Noël"), "IMG_0001", URL).data = data
+    nas = FakeSynologyPhotos()
+
+    run_import(takeout.write(tmp_path / "export"), nas)
+
+    path = f"Photos/Google Photos/2013/IMG_0001__yxk3qp.{extension}"
+    assert nas.paths() == [path]
+    assert nas.item(path).data == data
+
+
+@pytest.mark.parametrize(
+    "data",
+    [b"unknown", b"\x00\x00\x00\x1cftypavif\x00\x00\x00\x00avifmif1miaf"],
+    ids=["unknown", "avif"],
+)
+def test_a_file_with_no_extension_and_an_unknown_content_is_reported_refused(
+    tmp_path: Path, data: bytes
+) -> None:
+    takeout = TakeoutBuilder()
+    takeout.photo(takeout.album("Noël"), "IMG_0001", URL).data = data
+    nas = FakeSynologyPhotos()
+
+    report = run_import(takeout.write(tmp_path / "export"), nas)
+
+    assert nas.paths() == []
+    assert report.failed_uploads == ["Photos/Google Photos/2013/IMG_0001__yxk3qp"]
+
+
+def test_a_file_with_no_extension_is_not_sent_again_by_a_second_run(
+    tmp_path: Path,
+) -> None:
+    takeout = TakeoutBuilder()
+    takeout.photo(takeout.album("Noël"), "IMG_0001", URL)
+    export = takeout.write(tmp_path / "export")
+    nas = FakeSynologyPhotos()
     run_import(export, nas)
 
-    assert nas.paths() == ["Photos/Google Photos/2013/IMG_0001__yxk3qp"]
-    assert nas.item("Photos/Google Photos/2013/IMG_0001__yxk3qp").data != photo.data
+    report = run_import(export, nas)
+
+    assert nas.paths() == ["Photos/Google Photos/2013/IMG_0001__yxk3qp.jpg"]
+    assert report.uploaded == 0
 
 
 def test_an_album_photo_whose_file_is_not_in_the_export_is_reported(
