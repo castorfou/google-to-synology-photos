@@ -28,6 +28,10 @@ from google_to_synology_photos.takeout import Photo, Position
 EXIF_DATE = "%Y:%m:%d %H:%M:%S"
 # By content: Takeout has JPEGs named .png.
 SUFFIX_OF_SIGNATURE = {b"\xff\xd8\xff": ".jpg", b"\x89PNG\r\n\x1a\n": ".png"}
+# The brands of an ISO container that is a QuickTime video or a HEIC photo; any
+# other brand is an MP4.
+QUICKTIME_BRAND = b"qt  "
+HEIC_BRANDS = {b"heic", b"heix", b"heim", b"heis", b"hevc", b"hevx", b"mif1", b"msf1"}
 # Only the EXIF group counts: it is what gets written, and an XMP value, which
 # may be empty, stays as it is next to it.
 DATE_TAG = "EXIF:DateTimeOriginal"
@@ -90,12 +94,14 @@ class ConversionFailedError(Exception):
 class PreparedFile:
     """The bytes to send; complete is False if what they lack could not be written.
 
-    extension replaces the one of the photo's name, for a converted video.
+    extension replaces the one of the photo's name: a converted video is an MP4,
+    and a name with no extension, which the NAS refuses, takes its content's.
     """
 
     data: bytes
     complete: bool = True
     extension: str | None = None
+    converted: bool = False
 
 
 class MediaPreparer:
@@ -134,21 +140,25 @@ class MediaPreparer:
             (s for sign, s in SUFFIX_OF_SIGNATURE.items() if data.startswith(sign)),
             None,
         )
+        named = Path(photo.name).suffix
+        extension = None if named else _extension_of_content(data)
         if suffix is None:
-            if Path(photo.name).suffix.lower() in VIDEO_SUFFIXES:
-                return self._prepare_video(photo, data)
-            return PreparedFile(data)
+            if (named or f".{extension}").lower() in VIDEO_SUFFIXES:
+                prepared = self._prepare_video(photo, data)
+                if prepared.converted:
+                    return prepared
+            return PreparedFile(data, extension=extension)
         file = Path(self._folder.name, f"media{suffix}")
         file.write_bytes(data)
         try:
             writes = self._missing_writes(photo, str(file))
             if not writes:
-                return PreparedFile(data)
+                return PreparedFile(data, extension=extension)
             # -m: a minor error, as in many old files, does not stop the write.
             self._exiftool.execute("-m", "-overwrite_original", *writes, str(file))
         except ExifToolExecuteException:
-            return PreparedFile(data, complete=False)
-        return PreparedFile(file.read_bytes())
+            return PreparedFile(data, complete=False, extension=extension)
+        return PreparedFile(file.read_bytes(), extension=extension)
 
     def date_in_file(self, name: str, data: bytes) -> datetime | None:
         """Return the date a file holds, read as UTC, or None."""
@@ -180,7 +190,7 @@ class MediaPreparer:
                 _convert(source, converted, photo.taken)
             except subprocess.CalledProcessError as error:
                 raise ConversionFailedError(photo.name) from error
-            return PreparedFile(converted.read_bytes(), extension="mp4")
+            return PreparedFile(converted.read_bytes(), extension="mp4", converted=True)
 
     def _missing_writes(self, photo: Photo, file: str) -> list[str]:
         """Return the ExifTool arguments that write what file lacks."""
@@ -192,6 +202,21 @@ class MediaPreparer:
         if POSITION_TAG not in held and photo.position is not None:
             writes += _position_writes(photo.position)
         return writes
+
+
+def _extension_of_content(data: bytes) -> str | None:
+    """Return the extension a file has by its content, or None if unknown."""
+    for sign, suffix in SUFFIX_OF_SIGNATURE.items():
+        if data.startswith(sign):
+            return suffix.removeprefix(".")
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return "gif"
+    if data[4:8] != b"ftyp":
+        return None
+    brand = data[8:12]
+    if brand == QUICKTIME_BRAND:
+        return "mov"
+    return "heic" if brand in HEIC_BRANDS else "mp4"
 
 
 def _is_unplayable(video: Path) -> bool:

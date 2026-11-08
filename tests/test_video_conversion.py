@@ -127,6 +127,30 @@ def test_an_h264_video_is_sent_as_it_is(tmp_path: Path, name: str, muxer: str) -
     assert report.failed_conversions == []
 
 
+@pytest.mark.parametrize("muxer, extension", [("mp4", "mp4"), ("mov", "mov")])
+def test_a_video_whose_file_has_no_extension_takes_its_content_s(
+    tmp_path: Path, muxer: str, extension: str
+) -> None:
+    # The DS923 refuses a name with no extension, even a real video.
+    data = make_video(tmp_path, *H264, "-f", muxer)
+
+    nas, report = import_video(tmp_path, "VID", data)
+
+    assert nas.item(f"{FOLDER}/VID__yxk3qp.{extension}").data == data
+    assert report.videos_converted == 0
+
+
+def test_an_unplayable_video_whose_file_has_no_extension_is_converted(
+    tmp_path: Path,
+) -> None:
+    _, *hevc = UNPLAYABLE["hevc"]
+
+    nas, report = import_video(tmp_path, "VID", make_video(tmp_path, *hevc))
+
+    assert nas.paths() == [f"{FOLDER}/VID__yxk3qp.mp4"]
+    assert report.videos_converted == 1
+
+
 def test_an_h264_video_with_no_date_is_dated_by_its_upload(tmp_path: Path) -> None:
     data = make_video(tmp_path, *H264, "-map_metadata", "-1", "-f", "mp4")
 

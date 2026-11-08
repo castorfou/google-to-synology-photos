@@ -144,6 +144,7 @@ Photos/Google Photos/<year taken>/<original name>__<6 chars>.<ext>
 - The 6 chars are the first 6 characters of the lowercase base32 encoding of the SHA-256 of the photo's `url`.
 - The characters `\ / : * ? " < > |` and control characters in the name are replaced with `_`.
 - A converted video keeps its original name and takes the extension `.mp4`.
+- A photo whose file has no extension either (`IMG` holding a JPEG) takes the extension of its content, because the NAS refuses a name with no extension: `.jpg`, `.png`, `.gif`, `.heic`, `.mov` or `.mp4`, read from the first bytes. A video found so is converted like any video. A file of unknown content keeps its name and goes under *Files the NAS refused, not uploaded*.
 
 - A photo known only from an Album Download has no `url`: the 6 chars are the first 6 characters of the lowercase base32 encoding of the SHA-256 of its file, as it sits in the ZIP.
 

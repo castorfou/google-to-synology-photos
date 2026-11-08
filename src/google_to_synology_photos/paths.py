@@ -3,7 +3,8 @@
 ``Photos/Google Photos/<year taken>/<original name>__<6 chars>.<ext>``, where the
 6 chars are the first base32 characters (lowercase) of the SHA-256 of the url. A
 photo known only from an Album Download has no url of Google: the 6 chars come from its content.
-A converted video has the extension of what it became.
+A converted video has the extension of what it became, and a file with no
+extension takes its content's, since the NAS refuses a name with none.
 The rule is deterministic, so a photo gets the same path in every export, and is
 found on the NAS by its identity: its path without the extension, which a
 conversion changes.
