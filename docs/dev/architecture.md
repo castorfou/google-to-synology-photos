@@ -123,7 +123,7 @@ Every upload and overwrite sends the date taken as the `mtime` of the file on th
 
 ### Videos
 
-A file is a video when its extension says so: ffprobe would take a HEIC photo for an HEVC video. ffprobe then tells by content whether Synology Photos can play it, because Takeout has WMV files named `.avi`.
+A file is a video when its extension says so, or, with no extension, the brand of its MP4 or QuickTime container: ffprobe would take a HEIC photo for an HEVC video. ffprobe then tells by content whether Synology Photos can play it, because Takeout has WMV files named `.avi`.
 
 - **Converted:** the AVI, ASF (WMV) and MPEG formats, and HEVC, MPEG-1 and MPEG-2 video in any format.
 - **Sent untouched:** every other video, H.264 MP4 and MOV among them. One with no `creation_time` shows the date taken through the `mtime` of its upload.
@@ -144,7 +144,7 @@ Photos/Google Photos/<year taken>/<original name>__<6 chars>.<ext>
 - The 6 chars are the first 6 characters of the lowercase base32 encoding of the SHA-256 of the photo's `url`.
 - The characters `\ / : * ? " < > |` and control characters in the name are replaced with `_`.
 - A converted video keeps its original name and takes the extension `.mp4`.
-- A photo whose file has no extension either (`IMG` holding a JPEG) takes the extension of its content, because the NAS refuses a name with no extension: `.jpg`, `.png`, `.gif`, `.heic`, `.mov` or `.mp4`, read from the first bytes. A video found so is converted like any video. A file of unknown content keeps its name and goes under *Files the NAS refused, not uploaded*.
+- A photo whose file has no extension either (`IMG` holding a JPEG) takes the extension of its content, because the NAS refuses a name with no extension: `.jpg`, `.png`, `.gif`, `.heic`, `.mov` or `.mp4`, read from the first bytes. Another container brand, such as AVIF, counts as unknown. A video found so is converted like any video. A file of unknown content keeps its name and goes under *Files the NAS refused, not uploaded*.
 
 - A photo known only from an Album Download has no `url`: the 6 chars are the first 6 characters of the lowercase base32 encoding of the SHA-256 of its file, as it sits in the ZIP.
 

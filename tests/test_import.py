@@ -395,7 +395,7 @@ def test_a_file_with_the_exact_name_of_a_sidecar_stays_its_file(
         (b"GIF89a\x01\x00\x01\x00", "gif"),
     ],
 )
-def test_a_photo_whose_file_has_no_extension_takes_its_content_s(
+def test_a_photo_whose_file_has_no_extension_takes_its_content_extension(
     tmp_path: Path, data: bytes, extension: str
 ) -> None:
     takeout = TakeoutBuilder()
@@ -409,11 +409,16 @@ def test_a_photo_whose_file_has_no_extension_takes_its_content_s(
     assert nas.item(path).data == data
 
 
+@pytest.mark.parametrize(
+    "data",
+    [b"unknown", b"\x00\x00\x00\x1cftypavif\x00\x00\x00\x00avifmif1miaf"],
+    ids=["unknown", "avif"],
+)
 def test_a_file_with_no_extension_and_an_unknown_content_is_reported_refused(
-    tmp_path: Path,
+    tmp_path: Path, data: bytes
 ) -> None:
     takeout = TakeoutBuilder()
-    takeout.photo(takeout.album("Noël"), "IMG_0001", URL).data = b"unknown"
+    takeout.photo(takeout.album("Noël"), "IMG_0001", URL).data = data
     nas = FakeSynologyPhotos()
 
     report = run_import(takeout.write(tmp_path / "export"), nas)

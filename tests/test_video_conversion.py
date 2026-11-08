@@ -128,7 +128,7 @@ def test_an_h264_video_is_sent_as_it_is(tmp_path: Path, name: str, muxer: str) -
 
 
 @pytest.mark.parametrize("muxer, extension", [("mp4", "mp4"), ("mov", "mov")])
-def test_a_video_whose_file_has_no_extension_takes_its_content_s(
+def test_a_video_whose_file_has_no_extension_takes_its_content_extension(
     tmp_path: Path, muxer: str, extension: str
 ) -> None:
     # The DS923 refuses a name with no extension, even a real video.
