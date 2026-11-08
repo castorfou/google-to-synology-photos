@@ -236,6 +236,8 @@ def test_g2s_says_to_run_again_when_the_connection_is_lost(export: Path) -> None
         ssl.SSLEOFError("connection cut"),
         OSError("no route to host"),
         json.JSONDecodeError("not JSON", "", 0),
+        SynologyError(106, "upload"),
+        SynologyError(107, "upload"),
         SynologyError(119, "upload"),
     ],
 )

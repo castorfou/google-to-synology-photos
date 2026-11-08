@@ -28,7 +28,11 @@ from google_to_synology_photos.paths import (
     nas_path,
 )
 from google_to_synology_photos.report import Report
-from google_to_synology_photos.synology import NasAlbum, SynologyPhotos
+from google_to_synology_photos.synology import (
+    NasAlbum,
+    SynologyError,
+    SynologyPhotos,
+)
 from google_to_synology_photos.takeout import Album, Export, Photo, read_export
 
 
@@ -151,7 +155,14 @@ def _send(
     if not prepared.complete:
         report.metadata_not_written.append(path)
     send = nas.overwrite if path == overwriting else nas.upload
-    item_id = send(path, prepared.data, photo.taken)
+    try:
+        item_id = send(path, prepared.data, photo.taken)
+    except SynologyError as error:
+        if error.session_lost:
+            raise
+        # The NAS refuses this file at each run: stopping would stop every run.
+        report.failed_uploads.append(path)
+        return None
     if nas.item_at(path) != item_id:
         report.failed_writes.append(f"Upload of {path}")
         return None

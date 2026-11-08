@@ -159,6 +159,8 @@ The **identity** of a photo on the NAS is its path without the extension, so a c
 4. Pair the Albums, create those with no pair, give the others their Google Photos title, and add the photos each one lacks.
 5. Set each Photo Description that differs from the text on the NAS. An empty text clears what is there.
 6. Each write is read back right after it is made. A write that does not stick is listed in the report under *Writes that did not stick*.
+
+    An upload or an overwrite that the NAS answers with an error goes under *Files the NAS refused, not uploaded*, and the run goes on with the next photo, as for a video that failed to convert: the photo order is fixed, so a stop there would stop every run at the same file. What is on the NAS stays, in its Albums and with its text. A lost session (DSM errors 106, 107 and 119) and a network error still stop the run: every later call would fail too.
 7. The CLI prints the report and writes it to `report.md` in the folder that holds the export folder (`takeout/report.md` for `takeout/2024-01-01/`).
 8. When the run left nothing to try again, the CLI marks the export as finished (see [Finished exports](#finished-exports)).
 
@@ -212,7 +214,7 @@ A file on the NAS cannot be compared with the export: ExifTool adds the date, co
 
 #### Finished exports
 
-A replacement leaves no trace on the NAS, so the export folder holds the only record of one: an empty file `.g2s-done`, written by the CLI at the end of a run with nothing under *Writes that did not stick* and *Videos that failed to convert*. It sits with the export, so any computer that reads the export folder sees it, and losing it only brings back the comparison with the newest older export.
+A replacement leaves no trace on the NAS, so the export folder holds the only record of one: an empty file `.g2s-done`, written by the CLI at the end of a run with nothing under *Writes that did not stick*, *Files the NAS refused* and *Videos that failed to convert*. It sits with the export, so any computer that reads the export folder sees it, and losing it only brings back the comparison with the newest older export.
 
 - A run on a finished export has nothing to replace, so a second run makes no write.
 - A later export is compared with the newest finished one, so the changes of an export left unfinished are not lost. A change that such an export replaced on the NAS and that Google Photos undid afterwards stays on the NAS, because the two exports compared agree.
@@ -288,6 +290,6 @@ Tests assert on what the Household would see in the fake (paths, Albums, Photo D
 
 ### Fake Synology Photos
 
-`tests/fake_synology.py` is an in-memory fake Synology Photos, true to the behaviour measured on the DS923 by default. Setting `descriptions_stick = False` or `album_names_stick = False` makes description writes or Album renames silently not stick, and `overwrite_keeps_id = False` gives an overwritten item a new id, out of its Albums. The DS923 keeps the id: that setting checks that the import does not rely on it. `writes` counts the write calls, and `writes_left` cuts the connection after that many. Its files hold no date, so an item shows the `mtime` it was sent with.
+`tests/fake_synology.py` is an in-memory fake Synology Photos, true to the behaviour measured on the DS923 by default. Setting `descriptions_stick = False` or `album_names_stick = False` makes description writes or Album renames silently not stick, and `overwrite_keeps_id = False` gives an overwritten item a new id, out of its Albums. The DS923 keeps the id: that setting checks that the import does not rely on it. `writes` counts the write calls, and `writes_left` cuts the connection after that many. An upload or an overwrite to a path of `refused_paths` fails with a Synology error, as a file the NAS refuses would; no such refusal has been seen on the DS923, so its error code is made up. Its files hold no date, so an item shows the `mtime` it was sent with.
 
 `tests/test_contract.py` is the contract of the client, which keeps the fake true to the NAS. It runs against the fake always, and against the DS923 with `G2S_CONTRACT=1` (see [Contract test](synology-photos-api.md#contract-test)).

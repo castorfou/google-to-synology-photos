@@ -11,6 +11,9 @@
   reaches 0, so that a test can stop a run at any write.
 - Writes on unknown items answer success and do nothing; writes on an unknown
   Album fail.
+- An upload or an overwrite to a path of ``refused_paths`` fails, as a file the
+  NAS refuses would. No such refusal has been seen on the DS923: the contract
+  test does not check it.
 
 ``tests/test_contract.py`` checks these claims against the DS923.
 """
@@ -22,6 +25,8 @@ from google_to_synology_photos.synology import NasAlbum, SynologyError
 
 
 UNKNOWN_ALBUM = 609
+# No refusal of a file has been seen on the DS923: the code is made up.
+REFUSED_FILE = 1000
 
 
 @dataclass
@@ -48,6 +53,7 @@ class FakeSynologyPhotos:
         self.overwrite_keeps_id = True
         self.writes = 0
         self.writes_left: int | None = None
+        self.refused_paths: set[str] = set()
 
     def _write(self) -> None:
         """Count a write call, or cut the connection."""
@@ -65,6 +71,8 @@ class FakeSynologyPhotos:
 
     def upload(self, path: str, data: bytes, mtime: datetime) -> int:
         self._write()
+        if path in self.refused_paths:
+            raise SynologyError(REFUSED_FILE, "upload")
         existing = self.item_at(path)
         if existing is not None:
             return existing

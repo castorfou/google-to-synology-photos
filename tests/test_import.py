@@ -456,3 +456,25 @@ def test_an_english_export_is_read_like_a_french_one(tmp_path: Path) -> None:
     run_import(takeout.write(tmp_path / "export"), nas)
 
     assert nas.item(PHOTO_PATH).data == photo.edited
+
+
+def test_a_file_the_nas_refuses_is_reported_and_the_run_goes_on(
+    tmp_path: Path,
+) -> None:
+    takeout = TakeoutBuilder()
+    album = takeout.album("Été", description="Chez mamie")
+    takeout.photo(album, "IMG_0001.JPG", URL, caption="La plage")
+    takeout.photo(album, "IMG_0002.JPG", URL_2, caption="Le port")
+    nas = FakeSynologyPhotos()
+    nas.refused_paths.add(PHOTO_PATH)
+    kept = "Photos/Google Photos/2013/IMG_0002__d7w7p6.JPG"
+
+    report = run_import(takeout.write(tmp_path / "export"), nas)
+
+    assert nas.paths() == [kept]
+    assert nas.album_contents() == [("Été", [kept])]
+    assert nas.item(kept).description == "Chez mamie\n\nLe port"
+    assert report.uploaded == 1
+    assert report.failed_uploads == [PHOTO_PATH]
+    assert f"- {PHOTO_PATH}" in report.render()
+    assert not report.finished

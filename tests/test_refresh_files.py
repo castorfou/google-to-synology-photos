@@ -607,3 +607,41 @@ def test_a_previous_export_given_is_used_even_on_a_finished_export(
     )
 
     assert replaced_files(second) == "- Files replaced: 1"
+
+
+def test_a_replacement_the_nas_refuses_keeps_the_photo_as_it_was(
+    tmp_path: Path,
+) -> None:
+    before = TakeoutBuilder()
+    before.photo(before.album("Été"), "IMG_0001.JPG", URL, caption="La plage")
+    newer = TakeoutBuilder()
+    newer.photo(
+        newer.album("Été"), "IMG_0001.JPG", URL, caption="La plage", edited=True
+    )
+    first = before.write(tmp_path / "2024-01-01")
+    second = newer.write(tmp_path / "2025-01-01")
+    nas = FakeSynologyPhotos()
+    run_import(first, nas)
+    sent = nas.item(PHOTO_PATH).data
+    nas.refused_paths.add(PHOTO_PATH)
+
+    report = run_import(second, nas, previous=first)
+
+    assert nas.item(PHOTO_PATH).data == sent
+    assert nas.item(PHOTO_PATH).description == "La plage"
+    assert nas.album_contents() == [("Été", [PHOTO_PATH])]
+    assert report.replaced == 0
+    assert report.failed_uploads == [PHOTO_PATH]
+
+
+def test_an_export_with_a_refused_file_is_not_finished(tmp_path: Path) -> None:
+    export = edited_export(tmp_path / "2024-01-01")
+    nas = FakeSynologyPhotos()
+    nas.refused_paths.add(PHOTO_PATH)
+
+    main(["import", str(export)], connect=lambda ask_again: nas)
+
+    assert not (export / ".g2s-done").exists()
+    nas.refused_paths.clear()
+    main(["import", str(export)], connect=lambda ask_again: nas)
+    assert (export / ".g2s-done").exists()
