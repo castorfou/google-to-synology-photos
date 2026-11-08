@@ -3,6 +3,7 @@
 import json
 import re
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
@@ -272,8 +273,10 @@ def previous_export(export_dir: Path) -> Path | None:
     return max(finished or older, key=lambda folder: folder.name, default=None)
 
 
-def read_export(export_dir: Path) -> Export:
+def read_export(export_dir: Path, progress: Callable[[int, int], None]) -> Export:
     """Read every ZIP of export_dir into the Albums and their photos (by url).
+
+    progress is told the number of each ZIP it starts, and how many there are.
 
     A media file and its sidecar may sit in different ZIPs, and an Album folder
     may hold only sidecars, so all the ZIPs are listed before anything is paired.
@@ -287,7 +290,9 @@ def read_export(export_dir: Path) -> Export:
     sidecars: list[tuple[str, re.Match[str], dict]] = []
     root_comments: list[dict] = []
 
-    for zip_path in sorted(export_dir.glob("*.zip")):
+    zip_paths = sorted(export_dir.glob("*.zip"))
+    for number, zip_path in enumerate(zip_paths, start=1):
+        progress(number, len(zip_paths))
         with zipfile.ZipFile(zip_path) as zf:
             for member in sorted(zf.namelist()):
                 folder, _, filename = member.rpartition("/")

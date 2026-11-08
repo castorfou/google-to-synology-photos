@@ -42,9 +42,11 @@ Later runs ask nothing. The password stays in the keyring of your computer, and 
 
 ## Watch it run
 
-The tool first reads all the ZIPs, which can take some minutes with nothing on the screen. Then it shows three steps, one after the other:
+The tool first reads all the ZIPs, one after the other. This step is long: about 25 minutes for an export of 40 ZIPs read from a NAS share over the home network. A Refresh also reads the previous export, so this step takes about twice as long there. Then come three more steps. Each step has its own line, and its count goes up as the run goes on:
 
 ```text
+Reading the export: 39/39
+Reading the previous export: 3/39
 Photos and videos: 1250/48210
 Albums: 12/180
 Photo Descriptions: 3000/48210
