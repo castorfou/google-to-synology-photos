@@ -478,3 +478,22 @@ def test_a_file_the_nas_refuses_is_reported_and_the_run_goes_on(
     assert report.failed_uploads == [PHOTO_PATH]
     assert f"- {PHOTO_PATH}" in report.render()
     assert not report.finished
+
+
+def test_reading_the_export_shows_progress_by_zip(tmp_path: Path) -> None:
+    takeout = TakeoutBuilder()
+    album = takeout.album("Été")
+    takeout.photo(album, "IMG_0001.JPG", URL)
+    takeout.photo(album, "IMG_0002.JPG", URL_2)
+    takeout.photo(album, "IMG_0003.JPG", URL_3)
+    shown: list[tuple[str, int, int]] = []
+
+    run_import(
+        takeout.write(tmp_path / "export", zips=3),
+        FakeSynologyPhotos(),
+        lambda step, number, total: shown.append((step, number, total)),
+    )
+
+    reading = [s for s in shown if s[0].startswith("Reading")]
+    assert reading == [("Reading the export", n, 3) for n in (1, 2, 3)]
+    assert shown.index(reading[-1]) < shown.index(("Photos and videos", 1, 3))

@@ -214,6 +214,7 @@ def test_progress_shows_while_g2s_runs(
     main(["import", str(export)], connect=lambda ask_again: nas)
 
     shown = capsys.readouterr()
+    assert "Reading the export: 1/1" in shown.err
     assert "Photos and videos: 3/3" in shown.err
     assert "Albums: 2/2" in shown.err
     assert "Photo Descriptions: 3/3" in shown.err

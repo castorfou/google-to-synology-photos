@@ -164,7 +164,7 @@ The **identity** of a photo on the NAS is its path without the extension, so a c
 7. The CLI prints the report and writes it to `report.md` in the folder that holds the export folder (`takeout/report.md` for `takeout/2024-01-01/`).
 8. When the run left nothing to try again, the CLI marks the export as finished (see [Finished exports](#finished-exports)).
 
-Progress goes to the standard error, one line per step, as `<step>: <number>/<total>`.
+Progress goes to the standard error, one line per step, as `<step>: <number>/<total>`. Reading an export counts its ZIPs (`Reading the export`, then `Reading the previous export` on a Refresh): it reads the sidecars one by one, which takes about 25 minutes for 40 ZIPs over NFS, and the steps after it count photos, Albums and Photo Descriptions.
 
 ### Running again
 

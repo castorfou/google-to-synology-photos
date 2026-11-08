@@ -298,8 +298,14 @@ def run_import(
     to their Albums.
     """
     report = Report()
-    export = read_export(export_dir)
-    earlier_photos = {} if previous is None else read_export(previous).photos
+    export = read_export(export_dir, lambda n, t: progress("Reading the export", n, t))
+    earlier_photos = (
+        {}
+        if previous is None
+        else read_export(
+            previous, lambda n, t: progress("Reading the previous export", n, t)
+        ).photos
+    )
     downloads = [] if album_downloads is None else read_album_downloads(album_downloads)
     report.no_file = [
         f"{album.title}: {name}" for album in export.albums for name in album.no_file

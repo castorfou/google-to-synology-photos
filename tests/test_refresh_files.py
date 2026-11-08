@@ -645,3 +645,19 @@ def test_an_export_with_a_refused_file_is_not_finished(tmp_path: Path) -> None:
     nas.refused_paths.clear()
     main(["import", str(export)], connect=lambda ask_again: nas)
     assert (export / ".g2s-done").exists()
+
+
+def test_a_refresh_shows_the_reading_of_both_exports(tmp_path: Path) -> None:
+    first = edited_export(tmp_path / "2024-01-01")
+    second = edited_export(tmp_path / "2025-01-01", edited=True)
+    shown: list[tuple[str, int, int]] = []
+
+    run_import(
+        second,
+        FakeSynologyPhotos(),
+        lambda step, number, total: shown.append((step, number, total)),
+        previous=first,
+    )
+
+    assert ("Reading the export", 1, 1) in shown
+    assert ("Reading the previous export", 1, 1) in shown
