@@ -172,3 +172,30 @@ Les quatre issues qui bloquaient la #28 sont fermées : #54, #55, #56 et #57, le
 Ensuite, s'il te reste du temps, `/improve-codebase-architecture` peut repérer des refontes utiles. Par exemple, l'audit note qu'il n'y a pas de **Library planner** séparé : c'est `run_import` qui décide au fil de l'import.
 
 Je peux préparer le commentaire de clôture de la #28 si tu veux.
+
+## Diagnostic de l'erreur 106 (corrigé par #68)
+
+Relancer ne servira à rien : tu retomberas sur la même erreur à chaque fois. Ce n'est pas un hasard, c'est un bug de l'outil.
+
+### Ce qui se passe
+
+1. `g2s` se connecte au NAS **avant** de lire l'export : la connexion se fait dans `connect(False)`, appelé juste avant `run_import` (`src/google_to_synology_photos/cli.py#L116-L122`).
+2. La lecture des 39 ZIP prend ensuite environ 25 minutes, et pendant ce temps l'outil n'envoie rien au NAS.
+3. Or DSM ferme une session restée **21 minutes sans activité**. On l'avait déjà mesuré et noté dans `docs/dev/synology-photos-api.md` (« a session left idle for 21 minutes is gone »).
+4. Le premier appel après la lecture (`Browse.Folder.get`) reçoit donc l'erreur 106 (session expirée), et l'outil s'arrête. Il sait reconnaître une session perdue, mais il ne sait pas se reconnecter (`src/google_to_synology_photos/synology_client.py#L93`).
+
+Les tests ne l'ont pas vu : le faux NAS n'a pas de session qui expire, et la lecture d'un export de test est instantanée.
+
+### Comment corriger
+
+On peut faire deux corrections :
+- **se reconnecter automatiquement** quand la session est perdue, puis refaire l'appel. Le mot de passe est dans le trousseau et le jeton d'appareil évite le code 2FA, donc la reconnexion se fait sans rien te demander. Cette correction protège aussi des coupures pendant les 3 à 5 heures d'envoi ;
+- **se connecter seulement après la lecture**, ce qui est plus simple mais ne couvre que ce cas.
+
+Je recommande la première, et tu peux ajouter la seconde si tu veux.
+
+Sans cette correction, l'import ne peut pas aller au bout, donc elle bloque la migration. Je propose de créer l'issue tout de suite, puis de la corriger en TDD sur une branche, dans cette session ou après un `/clear` avec `/mattpocock-skills:implement`. Je crée l'issue ?
+
+
+/clear
+/mattpocock-skills:implement #68
