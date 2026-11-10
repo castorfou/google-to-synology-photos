@@ -153,3 +153,22 @@ Pour la suite : /clear, puis /mattpocock-skills:implement #49.
 /clear, puis /mattpocock-skills:implement #61.
 
 /clear, puis /mattpocock-skills:implement #64.
+
+
+Les quatre issues qui bloquaient la #28 sont fermées : #54, #55, #56 et #57, les trois dernières aujourd'hui. Deux bugs trouvés ensuite, #61 et #64, sont corrigés et fusionnés. La #28 est maintenant la seule issue ouverte.
+
+**Ce que je te conseille :**
+
+1. **Fermer la #28 après un dernier contrôle.** Ton audit disait « #28 stays open until these four are closed ». C'est le cas, donc tu peux la fermer. Il reste un trou : l'audit précise qu'aucun import complet de l'export du 2026-10-24 n'a été lancé. Si #61 et #64 viennent d'un vrai import, ce trou est en partie comblé. Sinon, fais un import complet sur le DS923 avant de fermer.
+
+2. **Décider pour les vidéos VP9 et MJPEG.** C'est le seul point marqué « Not checked » : 5 vidéos VP9 et 1 vidéo MJPEG sont envoyées sans conversion. Ouvre-en une dans Synology Photos :
+   - si elle se lit, note-le dans le commentaire de clôture ;
+   - si elle ne se lit pas, ouvre une issue pour les convertir en MP4, comme les ~410 autres.
+
+3. **Clôturer avec un commentaire.** Sur la #28, mets la liste des issues fermées, le résultat de l'import réel et ta décision sur VP9/MJPEG, puis ferme-la.
+
+4. **Lancer `/retro`.** Dans le parcours de Matt, c'est l'étape qui suit une fois le build fini. Ici il a dérapé : #54 à #57 ont été trouvées par l'audit, #61 et #64 après lui. `/retro` propose des changements de l'environnement de travail (tests de contrat, règles de code, pointeurs de doc) pour que ce genre de bug soit repéré plus tôt. Je ne peux pas la lancer depuis cette session : elle n'est pas dans la liste des skills disponibles ici. Vérifie qu'elle est bien installée, puis lance-la.
+
+Ensuite, s'il te reste du temps, `/improve-codebase-architecture` peut repérer des refontes utiles. Par exemple, l'audit note qu'il n'y a pas de **Library planner** séparé : c'est `run_import` qui décide au fil de l'import.
+
+Je peux préparer le commentaire de clôture de la #28 si tu veux.
